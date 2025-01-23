@@ -1,8 +1,4 @@
-# Example channel-based app
-
-This is an example application using the high-level channel-based interface for interacting with consensus.
-
-For more background on this application, [please read the corresponding tutorial](/docs/tutorials/channels.md) which goes over everything needed to write such an application.
+# MalachiteBFT <> Reth
 
 ## Run a local testnet
 
@@ -35,4 +31,3 @@ $ tail -f nodes/0/logs/node.log
 ```
 
 Press `Ctrl-C` to stop all the nodes.
-
