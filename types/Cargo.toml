@@ -18,10 +18,7 @@ malachitebft-signing-ed25519 = { workspace = true, features = ["rand", "serde"] 
 malachitebft-sync = { workspace = true }
 
 async-trait = { workspace = true }
-base64 = { workspace = true }
 bytes = { workspace = true }
-ed25519-consensus = { workspace = true }
-eyre = { workspace = true }
 hex = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }

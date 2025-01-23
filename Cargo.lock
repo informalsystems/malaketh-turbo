@@ -2731,10 +2731,7 @@ name = "malachitebft-reth-types"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "base64",
  "bytes",
- "ed25519-consensus",
- "eyre",
  "hex",
  "informalsystems-malachitebft-app",
  "informalsystems-malachitebft-codec",
