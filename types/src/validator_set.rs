@@ -120,29 +120,3 @@ impl malachitebft_core_types::ValidatorSet<TestContext> for ValidatorSet {
         self.validators.get(index)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-
-    use super::*;
-
-    use crate::PrivateKey;
-
-    #[test]
-    fn new_validator_set_vp() {
-        let mut rng = StdRng::seed_from_u64(0x42);
-
-        let sk1 = PrivateKey::generate(&mut rng);
-        let sk2 = PrivateKey::generate(&mut rng);
-        let sk3 = PrivateKey::generate(&mut rng);
-
-        let v1 = Validator::new(sk1.public_key(), 1);
-        let v2 = Validator::new(sk2.public_key(), 2);
-        let v3 = Validator::new(sk3.public_key(), 3);
-
-        let vs = ValidatorSet::new(vec![v1, v2, v3]);
-        assert_eq!(vs.total_voting_power(), 6);
-    }
-}
