@@ -62,7 +62,7 @@ message ProposalInit {
 }
 
 message ProposalData {
-    uint64 factor = 1;
+    bytes bytes = 1;
 }
 
 message ProposalFin {

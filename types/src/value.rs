@@ -66,10 +66,17 @@ pub struct Value {
 }
 
 impl Value {
-    pub fn new(value: u64) -> Self {
+    /// Creates a new Value by hashing the provided bytes using SipHash
+    pub fn new(data: Bytes) -> Self {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+
+        let mut hasher = DefaultHasher::new(); // Uses SipHash
+        data.hash(&mut hasher);
+        
         Self {
-            value,
-            extensions: Bytes::new(),
+            value: hasher.finish(), // Get the u64 hash
+            extensions: data,       // Store original bytes as extensions
         }
     }
 

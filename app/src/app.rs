@@ -78,7 +78,12 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // If we have not previously built a value for that very same height and round,
                 // we need to create a new value to propose and send it back to consensus.
-                let proposal = state.propose_value(height, round).await?;
+
+
+                // Get block data
+                let block_bytes = state.make_block();
+
+                let proposal = state.propose_value(height, round, block_bytes.clone()).await?;
 
                 // Send it to consensus
                 if reply.send(proposal.clone()).is_err() {
@@ -87,7 +92,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // Now what's left to do is to break down the value to propose into parts,
                 // and send those parts over the network to our peers, for them to re-assemble the full value.
-                for stream_message in state.stream_proposal(proposal) {
+                for stream_message in state.stream_proposal(proposal, block_bytes) {
                     info!(%height, %round, "Streaming proposal part: {stream_message:?}");
                     channels
                         .network

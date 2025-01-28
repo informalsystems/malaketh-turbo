@@ -211,18 +211,34 @@ impl State {
         )))
     }
 
+    /// Make up a new value to propose
+    /// A real application would have a more complex logic here,
+    /// typically reaping transactions from a mempool and executing them against its state,
+    /// before computing the merkle root of the new app state.
+    // fn make_value(&mut self) -> Value {
+    //     let value = self.rng.gen_range(100..=100000);
+    //     Value::new(value)
+    // }
+
+    pub fn make_block(&mut self) -> Bytes {
+        let mut random_bytes = vec![0u8; 1024];
+        self.rng.fill(&mut random_bytes[..]);
+        Bytes::from(random_bytes)
+    }
+
     /// Creates a new proposal value for the given height
     /// Returns either a previously built proposal or creates a new one
-    async fn create_proposal(
+    pub async fn propose_value(
         &mut self,
         height: Height,
         round: Round,
-    ) -> eyre::Result<ProposedValue<TestContext>> {
+        data: Bytes,
+    ) -> eyre::Result<LocallyProposedValue<TestContext>> {
         assert_eq!(height, self.current_height);
         assert_eq!(round, self.current_round);
 
         // We create a new value.
-        let value = self.make_value();
+        let value = Value::new(data);
 
         let proposal = ProposedValue {
             height,
@@ -239,30 +255,6 @@ impl State {
             .store_undecided_proposal(proposal.clone())
             .await?;
 
-        Ok(proposal)
-    }
-
-    /// Make up a new value to propose
-    /// A real application would have a more complex logic here,
-    /// typically reaping transactions from a mempool and executing them against its state,
-    /// before computing the merkle root of the new app state.
-    fn make_value(&mut self) -> Value {
-        let value = self.rng.gen_range(100..=100000);
-        Value::new(value)
-    }
-
-    /// Creates a new proposal value for the given height
-    /// Returns either a previously built proposal or creates a new one
-    pub async fn propose_value(
-        &mut self,
-        height: Height,
-        round: Round,
-    ) -> eyre::Result<LocallyProposedValue<TestContext>> {
-        assert_eq!(height, self.current_height);
-        assert_eq!(round, self.current_round);
-
-        let proposal = self.create_proposal(height, round).await?;
-
         Ok(LocallyProposedValue::new(
             proposal.height,
             proposal.round,
@@ -276,8 +268,9 @@ impl State {
     pub fn stream_proposal(
         &mut self,
         value: LocallyProposedValue<TestContext>,
+        data: Bytes,
     ) -> impl Iterator<Item = StreamMessage<ProposalPart>> {
-        let parts = self.value_to_parts(value);
+        let parts = self.make_proposal_parts(value, data);
 
         let stream_id = self.stream_id;
         self.stream_id += 1;
@@ -300,12 +293,49 @@ impl State {
         msgs.into_iter()
     }
 
-    fn value_to_parts(&self, value: LocallyProposedValue<TestContext>) -> Vec<ProposalPart> {
+    // fn value_to_parts(&self, value: LocallyProposedValue<TestContext>) -> Vec<ProposalPart> {
+    //     let mut hasher = sha3::Keccak256::new();
+    //     let mut parts = Vec::new();
+
+    //     // Init
+    //     // Include metadata about the proposal
+    //     {
+    //         parts.push(ProposalPart::Init(ProposalInit::new(
+    //             value.height,
+    //             value.round,
+    //             self.address,
+    //         )));
+
+    //         hasher.update(value.height.as_u64().to_be_bytes().as_slice());
+    //         hasher.update(value.round.as_i64().to_be_bytes().as_slice());
+    //     }
+
+    //     // Data
+    //     // Include each prime factor of the value as a separate proposal part
+    //     {
+    //         for factor in factor_value(value.value) {
+    //             parts.push(ProposalPart::Data(ProposalData::new(factor)));
+
+    //             hasher.update(factor.to_be_bytes().as_slice());
+    //         }
+    //     }
+
+    //     // Fin
+    //     // Sign the hash of the proposal parts
+    //     {
+    //         let hash = hasher.finalize().to_vec();
+    //         let signature = self.ctx.signing_provider.sign(&hash);
+    //         parts.push(ProposalPart::Fin(ProposalFin::new(signature)));
+    //     }
+
+    //     parts
+    // }
+
+    fn make_proposal_parts(&self, value: LocallyProposedValue<TestContext>, data: Bytes) -> Vec<ProposalPart> {
         let mut hasher = sha3::Keccak256::new();
         let mut parts = Vec::new();
 
         // Init
-        // Include metadata about the proposal
         {
             parts.push(ProposalPart::Init(ProposalInit::new(
                 value.height,
@@ -318,17 +348,15 @@ impl State {
         }
 
         // Data
-        // Include each prime factor of the value as a separate proposal part
         {
-            for factor in factor_value(value.value) {
-                parts.push(ProposalPart::Data(ProposalData::new(factor)));
-
-                hasher.update(factor.to_be_bytes().as_slice());
+            const CHUNK_SIZE: usize = 1024; // 1KB chunks
+            for chunk in data.chunks(CHUNK_SIZE) {
+                let chunk_data = ProposalData::new(Bytes::copy_from_slice(chunk));
+                parts.push(ProposalPart::Data(chunk_data));
+                hasher.update(chunk);
             }
         }
 
-        // Fin
-        // Sign the hash of the proposal parts
         {
             let hash = hasher.finalize().to_vec();
             let signature = self.ctx.signing_provider.sign(&hash);
@@ -360,7 +388,7 @@ impl State {
                     hasher.update(init.round.as_i64().to_be_bytes());
                 }
                 ProposalPart::Data(data) => {
-                    hasher.update(data.factor.to_be_bytes());
+                    hasher.update(data.bytes.clone());
                 }
                 ProposalPart::Fin(fin) => {
                     signature = Some(&fin.signature);
@@ -396,18 +424,27 @@ impl State {
 ///
 /// This is done by multiplying all the factors in the parts.
 fn assemble_value_from_parts(parts: ProposalParts) -> ProposedValue<TestContext> {
-    let value = parts
-        .parts
-        .iter()
+    // Calculate total size and allocate buffer
+    let total_size: usize = parts.parts.iter()
         .filter_map(|part| part.as_data())
-        .fold(1, |acc, data| acc * data.factor);
+        .map(|data| data.bytes.len())
+        .sum();
+
+    let mut data = Vec::with_capacity(total_size);
+    // Concatenate all chunks
+    for part in parts.parts.iter().filter_map(|part| part.as_data()) {
+        data.extend_from_slice(&part.bytes);
+    }
+
+    // Convert the concatenated data vector into Bytes
+    let data = Bytes::from(data);
 
     ProposedValue {
         height: parts.height,
         round: parts.round,
         valid_round: Round::Nil,
         proposer: parts.proposer,
-        value: Value::new(value),
+        value: Value::new(data),
         validity: Validity::Valid,
         extension: None,
     }
@@ -416,30 +453,4 @@ fn assemble_value_from_parts(parts: ProposalParts) -> ProposedValue<TestContext>
 /// Decodes a Value from its byte representation using ProtobufCodec
 pub fn decode_value(bytes: Bytes) -> Value {
     ProtobufCodec.decode(bytes).unwrap()
-}
-
-/// Returns the list of prime factors of the given value
-///
-/// In a real application, this would typically split transactions
-/// into chunks ino order to reduce bandwidth requirements due
-/// to duplication of gossip messages.
-fn factor_value(value: Value) -> Vec<u64> {
-    let mut factors = Vec::new();
-    let mut n = value.value;
-
-    let mut i = 2;
-    while i * i <= n {
-        if n % i == 0 {
-            factors.push(i);
-            n /= i;
-        } else {
-            i += 1;
-        }
-    }
-
-    if n > 1 {
-        factors.push(n);
-    }
-
-    factors
 }
