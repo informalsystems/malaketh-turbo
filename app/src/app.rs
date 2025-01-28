@@ -99,12 +99,6 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                         .send(NetworkMsg::PublishProposalPart(stream_message))
                         .await?;
                 }
-
-                // NOTE: In this tutorial, the value is simply an integer and therefore results in a very small
-                // message to gossip over the network, but if we were building a real application,
-                // say building blocks containing thousands of transactions, the proposal would typically only
-                // carry the block hash and the full block itself would be split into parts in order to
-                // avoid blowing up the bandwidth requirements by gossiping a single huge message.
             }
 
             // On the receiving end of these proposal parts (ie. when we are not the proposer),

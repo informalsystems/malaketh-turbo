@@ -73,6 +73,9 @@ const DECIDED_VALUES_TABLE: redb::TableDefinition<HeightKey, Vec<u8>> =
 const UNDECIDED_PROPOSALS_TABLE: redb::TableDefinition<UndecidedValueKey, Vec<u8>> =
     redb::TableDefinition::new("undecided_values");
 
+const BLOCK_DATA_TABLE: redb::TableDefinition<HeightKey, Vec<u8>> =
+    redb::TableDefinition::new("block_data");
+
 struct Db {
     db: redb::Database,
     metrics: DbMetrics,
@@ -197,7 +200,10 @@ impl Db {
         let tx = self.db.begin_write()?;
         {
             let mut table = tx.open_table(UNDECIDED_PROPOSALS_TABLE)?;
-            table.insert(key, value.to_vec())?;
+            // Only insert if no value exists at this key
+            if table.get(&key)?.is_none() {
+                table.insert(key, value.to_vec())?;
+            }
         }
         tx.commit()?;
 
@@ -206,6 +212,9 @@ impl Db {
 
         Ok(())
     }
+
+    
+
 
     fn height_range<Table>(
         &self,
@@ -257,6 +266,13 @@ impl Db {
                 decided.remove(key)?;
                 certificates.remove(key)?;
             }
+
+            let mut block_data = tx.open_table(BLOCK_DATA_TABLE)?;
+            let keys = self.height_range(&block_data, ..retain_height)?;
+            for key in &keys {
+                block_data.remove(key)?;
+            }
+
             keys
         };
 
@@ -295,8 +311,51 @@ impl Db {
         let _ = tx.open_table(DECIDED_VALUES_TABLE)?;
         let _ = tx.open_table(CERTIFICATES_TABLE)?;
         let _ = tx.open_table(UNDECIDED_PROPOSALS_TABLE)?;
+        let _ = tx.open_table(BLOCK_DATA_TABLE)?;
 
         tx.commit()?;
+
+        Ok(())
+    }
+
+    fn get_block_data(&self, height: Height) -> Result<Option<Bytes>, StoreError> {
+        let start = Instant::now();
+        let mut read_bytes = 0;
+
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(BLOCK_DATA_TABLE)?;
+        
+        let data = if let Some(data) = table.get(&height)? {
+            let bytes = data.value();
+            read_bytes = bytes.len() as u64;
+            Some(Bytes::copy_from_slice(&bytes))
+        } else {
+            None
+        };
+
+        self.metrics.observe_read_time(start.elapsed());
+        self.metrics.add_read_bytes(read_bytes);
+        self.metrics.add_key_read_bytes(size_of::<Height>() as u64);
+
+        Ok(data)
+    }
+
+    fn insert_block_data(&self, height: Height, data: Bytes) -> Result<(), StoreError> {
+        let start = Instant::now();
+        let write_bytes = data.len() as u64;
+
+        let tx = self.db.begin_write()?;
+        {
+            let mut table = tx.open_table(BLOCK_DATA_TABLE)?;
+            // Only insert if no value exists at this key
+            if table.get(&height)?.is_none() {
+                table.insert(height, data.to_vec())?;
+            }
+        }
+        tx.commit()?;
+
+        self.metrics.observe_write_time(start.elapsed());
+        self.metrics.add_write_bytes(write_bytes);
 
         Ok(())
     }
@@ -374,5 +433,15 @@ impl Store {
     pub async fn prune(&self, retain_height: Height) -> Result<Vec<Height>, StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.prune(retain_height)).await?
+    }
+
+    pub async fn get_block_data(&self, height: Height) -> Result<Option<Bytes>, StoreError> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || db.get_block_data(height)).await?
+    }
+
+    pub async fn store_block_data(&self, height: Height, data: Bytes) -> Result<(), StoreError> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || db.insert_block_data(height, data)).await?
     }
 }

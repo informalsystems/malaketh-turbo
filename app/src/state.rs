@@ -147,9 +147,10 @@ impl State {
         }
 
         // Re-assemble the proposal from its parts
-        let value = assemble_value_from_parts(parts);
+        let (value, data) = assemble_value_from_parts(parts);
 
         self.store.store_undecided_proposal(value.clone()).await?;
+        self.store.store_block_data(self.current_height, data).await?;
 
         Ok(Some(value))
     }
@@ -157,6 +158,11 @@ impl State {
     /// Retrieves a decided block at the given height
     pub async fn get_decided_value(&self, height: Height) -> Option<DecidedValue> {
         self.store.get_decided_value(height).await.ok().flatten()
+    }
+
+    /// Retrieves a decided block data at the given height
+    pub async fn get_block_data(&self, height: Height) -> Option<Bytes> {
+        self.store.get_block_data(height).await.ok().flatten()
     }
 
     /// Commits a value with the given certificate, updating internal state
@@ -177,6 +183,17 @@ impl State {
 
             return Ok(()); // FIXME: Return an actual error and handle in caller
         };
+
+        // Verify that the proposal value matches the certificate value
+        if proposal.value.id() != certificate.value_id {
+            error!(
+                height = %certificate.height,
+                proposal_value = %proposal.value.id(),
+                certificate_value = %certificate.value_id,
+                "Proposal value does not match certificate value"
+            );
+            return Ok(());
+        }
 
         self.store
             .store_decided_value(&certificate, proposal.value)
@@ -423,7 +440,7 @@ impl State {
 /// Re-assemble a [`ProposedValue`] from its [`ProposalParts`].
 ///
 /// This is done by multiplying all the factors in the parts.
-fn assemble_value_from_parts(parts: ProposalParts) -> ProposedValue<TestContext> {
+fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext>, Bytes) {
     // Calculate total size and allocate buffer
     let total_size: usize = parts.parts.iter()
         .filter_map(|part| part.as_data())
@@ -439,15 +456,17 @@ fn assemble_value_from_parts(parts: ProposalParts) -> ProposedValue<TestContext>
     // Convert the concatenated data vector into Bytes
     let data = Bytes::from(data);
 
-    ProposedValue {
+    let proposed_value = ProposedValue {
         height: parts.height,
         round: parts.round,
         valid_round: Round::Nil,
         proposer: parts.proposer,
-        value: Value::new(data),
+        value: Value::new(data.clone()),
         validity: Validity::Valid,
         extension: None,
-    }
+    };
+
+    (proposed_value, data)
 }
 
 /// Decodes a Value from its byte representation using ProtobufCodec
