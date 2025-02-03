@@ -1,5 +1,6 @@
 use color_eyre::eyre::{self, eyre};
 use tracing::{error, info};
+use std::time::Duration;
 
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -133,6 +134,9 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // When that happens, we store the decided value in our store
                 state.commit(certificate).await?;
+
+                // Pause briefly before starting next height, just to make following the logs easier
+                tokio::time::sleep(Duration::from_secs(1)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply

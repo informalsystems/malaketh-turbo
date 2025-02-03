@@ -2688,6 +2688,7 @@ dependencies = [
  "bytes",
  "color-eyre",
  "derive-where",
+ "hex",
  "informalsystems-malachitebft-app-channel",
  "informalsystems-malachitebft-proto",
  "malachitebft-reth-cli",

@@ -8,7 +8,8 @@ use color_eyre::eyre::{self, eyre};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
+use hex;
 
 use malachitebft_app_channel::app::streaming::{StreamContent, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -170,6 +171,14 @@ impl State {
 
         // Store block data for decided value
         let block_data = self.store.get_block_data(certificate.height, certificate.round).await?;
+        
+        // Log first 32 bytes of block data with JNT prefix
+        if let Some(data) = &block_data {
+            if data.len() >= 32 {
+                info!("JNT block_data[0..32]: {}", hex::encode(&data[..32]));
+            }
+        }
+        
         if let Some(data) = block_data {
             self.store.store_decided_block_data(certificate.height, data).await?;
         }
