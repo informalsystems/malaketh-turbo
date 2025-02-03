@@ -106,31 +106,11 @@ impl State {
     ) -> eyre::Result<Option<ProposedValue<TestContext>>> {
         let sequence = part.sequence;
 
-        // Check if we have a full proposal
+        // Check if we have a full proposal - for now we are assuming that the network layer will stop spam/DOS
         let Some(parts) = self.streams_map.insert(from, part) else {
             return Ok(None);
         };
 
-        // Verify the proposal signature
-        match self.verify_proposal_signature(&parts) {
-            Ok(()) => {
-                // Signature verified successfully, continue processing
-            }
-            Err(SignatureVerificationError::MissingFinPart) => {
-                return Err(eyre!(
-                    "Expected to have full proposal but `Fin` proposal part is missing for proposer: {}",
-                    parts.proposer
-                ));
-            }
-            Err(SignatureVerificationError::ProposerNotFound) => {
-                error!(proposer = %parts.proposer, "Proposer not found in validator set");
-                return Ok(None);
-            }
-            Err(SignatureVerificationError::InvalidSignature) => {
-                error!(proposer = %parts.proposer, "Invalid signature in Fin part");
-                return Ok(None);
-            }
-        }
 
         // Check if the proposal is outdated
         if parts.height < self.current_height {
@@ -150,7 +130,7 @@ impl State {
         let (value, data) = assemble_value_from_parts(parts);
 
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store.store_block_data(self.current_height, data).await?;
+        self.store.store_undecided_block_data(self.current_height, self.current_round, data).await?;
 
         Ok(Some(value))
     }
@@ -161,8 +141,8 @@ impl State {
     }
 
     /// Retrieves a decided block data at the given height
-    pub async fn get_block_data(&self, height: Height) -> Option<Bytes> {
-        self.store.get_block_data(height).await.ok().flatten()
+    pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
+        self.store.get_block_data(height, round).await.ok().flatten()
     }
 
     /// Commits a value with the given certificate, updating internal state
@@ -184,20 +164,15 @@ impl State {
             return Ok(()); // FIXME: Return an actual error and handle in caller
         };
 
-        // Verify that the proposal value matches the certificate value
-        if proposal.value.id() != certificate.value_id {
-            error!(
-                height = %certificate.height,
-                proposal_value = %proposal.value.id(),
-                certificate_value = %certificate.value_id,
-                "Proposal value does not match certificate value"
-            );
-            return Ok(());
-        }
-
         self.store
             .store_decided_value(&certificate, proposal.value)
             .await?;
+
+        // Store block data for decided value
+        let block_data = self.store.get_block_data(certificate.height, certificate.round).await?;
+        if let Some(data) = block_data {
+            self.store.store_decided_block_data(certificate.height, data).await?;
+        }
 
         // Prune the store, keep the last 5 heights
         let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5));
@@ -309,44 +284,6 @@ impl State {
 
         msgs.into_iter()
     }
-
-    // fn value_to_parts(&self, value: LocallyProposedValue<TestContext>) -> Vec<ProposalPart> {
-    //     let mut hasher = sha3::Keccak256::new();
-    //     let mut parts = Vec::new();
-
-    //     // Init
-    //     // Include metadata about the proposal
-    //     {
-    //         parts.push(ProposalPart::Init(ProposalInit::new(
-    //             value.height,
-    //             value.round,
-    //             self.address,
-    //         )));
-
-    //         hasher.update(value.height.as_u64().to_be_bytes().as_slice());
-    //         hasher.update(value.round.as_i64().to_be_bytes().as_slice());
-    //     }
-
-    //     // Data
-    //     // Include each prime factor of the value as a separate proposal part
-    //     {
-    //         for factor in factor_value(value.value) {
-    //             parts.push(ProposalPart::Data(ProposalData::new(factor)));
-
-    //             hasher.update(factor.to_be_bytes().as_slice());
-    //         }
-    //     }
-
-    //     // Fin
-    //     // Sign the hash of the proposal parts
-    //     {
-    //         let hash = hasher.finalize().to_vec();
-    //         let signature = self.ctx.signing_provider.sign(&hash);
-    //         parts.push(ProposalPart::Fin(ProposalFin::new(signature)));
-    //     }
-
-    //     parts
-    // }
 
     fn make_proposal_parts(&self, value: LocallyProposedValue<TestContext>, data: Bytes) -> Vec<ProposalPart> {
         let mut hasher = sha3::Keccak256::new();

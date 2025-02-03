@@ -62,24 +62,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 info!(%height, %round, "Consensus is requesting a value to propose");
 
-                // Here it is important that, if we have previously built a value for this height and round,
-                // we send back the very same value. We will not go into details here but this has to do
-                // with crash recovery and is not strictly necessary in this example app since all our state
-                // is kept in-memory and therefore is not crash tolerant at all.
-                if let Some(proposal) = state.get_previously_built_value(height, round).await? {
-                    info!(value = %proposal.value.id(), "Re-using previously built value");
-
-                    if reply.send(proposal).is_err() {
-                        error!("Failed to send GetValue reply");
-                    }
-
-                    return Ok(());
-                }
-
-                // If we have not previously built a value for that very same height and round,
-                // we need to create a new value to propose and send it back to consensus.
-
-
+                // We need to create a new value to propose and send it back to consensus.
                 // Get block data
                 let block_bytes = state.make_block();
 
@@ -116,8 +99,11 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
-                if reply.send(proposed_value).is_err() {
-                    error!("Failed to send ReceivedProposalPart reply");
+                // Only send reply if we got a complete proposal value
+                if let Some(value) = proposed_value {
+                    if reply.send(Some(value)).is_err() {
+                        error!("Failed to send ReceivedProposalPart reply");
+                    }
                 }
             }
 
@@ -166,6 +152,8 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // for the heights in between the one we are currently at (included) and the one
             // that they are at. When the engine receives such a value, it will forward to the application
             // to decode it from its wire format and send back the decoded value to consensus.
+            //
+            // TODO: store the received value somewhere here
             AppMsg::ProcessSyncedValue {
                 height,
                 round,
@@ -177,6 +165,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 let value = decode_value(value_bytes);
 
+                // We send to consensus to see if it has been decided on
                 if reply
                     .send(ProposedValue {
                         height,
