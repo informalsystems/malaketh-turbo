@@ -24,6 +24,8 @@ use malachitebft_reth_types::{
 use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
+/// Size of randomly generated blocks in bytes
+const BLOCK_SIZE: usize = 10241024;
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
 pub struct State {
@@ -130,6 +132,16 @@ impl State {
         // Re-assemble the proposal from its parts
         let (value, data) = assemble_value_from_parts(parts);
 
+        // Log first 32 bytes of proposal data and total size
+        if data.len() >= 32 {
+            println!(
+                "Proposal data[0..32]: {}, total_size: {} bytes",
+                hex::encode(&data[..32]),
+                data.len()
+            );
+        }
+
+        // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
         self.store.store_undecided_block_data(self.current_height, self.current_round, data).await?;
 
@@ -175,7 +187,7 @@ impl State {
         // Log first 32 bytes of block data with JNT prefix
         if let Some(data) = &block_data {
             if data.len() >= 32 {
-                info!("JNT block_data[0..32]: {}", hex::encode(&data[..32]));
+                println!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
             }
         }
         
@@ -222,7 +234,7 @@ impl State {
     // }
 
     pub fn make_block(&mut self) -> Bytes {
-        let mut random_bytes = vec![0u8; 1024];
+        let mut random_bytes = vec![0u8; BLOCK_SIZE];
         self.rng.fill(&mut random_bytes[..]);
         Bytes::from(random_bytes)
     }

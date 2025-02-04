@@ -1,5 +1,5 @@
 use color_eyre::eyre::{self, eyre};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use std::time::Duration;
 
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -91,12 +91,12 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // have all its constituent parts. Then we send that value back to consensus for it to
             // consider and vote for or against it (ie. vote `nil`), depending on its validity.
             AppMsg::ReceivedProposalPart { from, part, reply } => {
-                let part_type = match &part.content {
-                    StreamContent::Data(part) => part.get_type(),
-                    StreamContent::Fin(_) => "end of stream",
+                let (part_type, part_size) = match &part.content {
+                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(&part)),
+                    StreamContent::Fin(_) => ("end of stream", 0),
                 };
 
-                info!(%from, %part.sequence, part.type = %part_type, "Received proposal part");
+                info!(%from, %part.sequence, part.type = %part_type, size = %part_size, "Received proposal part");
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
