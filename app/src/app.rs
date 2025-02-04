@@ -102,11 +102,8 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
-                // Only send reply if we got a complete proposal value
-                if let Some(value) = proposed_value {
-                    if reply.send(Some(value)).is_err() {
-                        error!("Failed to send ReceivedProposalPart reply");
-                    }
+                if reply.send(proposed_value).is_err() {
+                    error!("Failed to send ReceivedProposalPart reply");
                 }
             }
 
