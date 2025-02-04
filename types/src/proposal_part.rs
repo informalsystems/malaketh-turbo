@@ -1,14 +1,16 @@
+use core::fmt;
+
 use bytes::Bytes;
-use malachitebft_signing_ed25519::Signature;
 use serde::{Deserialize, Serialize};
 
 use malachitebft_core_types::Round;
 use malachitebft_proto::{self as proto, Error as ProtoError, Protobuf};
+use malachitebft_signing_ed25519::Signature;
 
 use crate::codec::proto::{decode_signature, encode_signature};
 use crate::{Address, Height, TestContext};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProposalData {
     pub bytes: Bytes,
 }
@@ -20,6 +22,15 @@ impl ProposalData {
 
     pub fn size_bytes(&self) -> usize {
         std::mem::size_of::<u64>()
+    }
+}
+
+impl fmt::Debug for ProposalData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProposalData")
+            .field("bytes", &"<...>")
+            .field("len", &self.bytes.len())
+            .finish()
     }
 }
 

@@ -61,50 +61,50 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [workspace.dependencies.malachitebft-app]
 package = "informalsystems-malachitebft-app"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-app-channel]
 package = "informalsystems-malachitebft-app-channel"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-core-types]
 package = "informalsystems-malachitebft-core-types"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-core-consensus]
 package = "informalsystems-malachitebft-core-consensus"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-codec]
 package = "informalsystems-malachitebft-codec"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-config]
 package = "informalsystems-malachitebft-config"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-metrics]
 package = "informalsystems-malachitebft-metrics"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-proto]
 package = "informalsystems-malachitebft-proto"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-signing-ed25519]
 package = "informalsystems-malachitebft-signing-ed25519"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
 
 [workspace.dependencies.malachitebft-sync]
 package = "informalsystems-malachitebft-sync"
-version = "0.0.1"
+rev = "8825200c25c0fadd33f39740c9400670702952d"
 git = "https://github.com/informalsystems/malachite.git"
