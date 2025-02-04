@@ -337,7 +337,7 @@ impl State {
 
         // Data
         {
-            const CHUNK_SIZE: usize = 1024; // 1KB chunks
+            const CHUNK_SIZE: usize = 20 * 1024; // 20KB chunks
             for chunk in data.chunks(CHUNK_SIZE) {
                 let chunk_data = ProposalData::new(Bytes::copy_from_slice(chunk));
                 parts.push(ProposalPart::Data(chunk_data));
