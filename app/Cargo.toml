@@ -16,6 +16,7 @@ malachitebft-reth-cli.workspace = true
 malachitebft-app-channel.workspace = true
 malachitebft-proto.workspace = true
 
+hex.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 derive-where.workspace = true

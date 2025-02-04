@@ -39,6 +39,8 @@ fi
 echo "Compiling '$APP_BINARY'..."
 cargo build -p $APP_BINARY
 
+export RUST_BACKTRACE=full
+
 # Create nodes and logs directories, run nodes
 for NODE in $(seq 0 $((NODES_COUNT - 1))); do
     if [[ -z "$NO_RESET" ]]; then

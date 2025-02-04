@@ -1,4 +1,5 @@
 use color_eyre::eyre::{self, eyre};
+use std::time::Duration;
 use tracing::{error, info};
 
 use malachitebft_app_channel::app::streaming::StreamContent;
@@ -62,23 +63,13 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 info!(%height, %round, "Consensus is requesting a value to propose");
 
-                // Here it is important that, if we have previously built a value for this height and round,
-                // we send back the very same value. We will not go into details here but this has to do
-                // with crash recovery and is not strictly necessary in this example app since all our state
-                // is kept in-memory and therefore is not crash tolerant at all.
-                if let Some(proposal) = state.get_previously_built_value(height, round).await? {
-                    info!(value = %proposal.value.id(), "Re-using previously built value");
+                // We need to create a new value to propose and send it back to consensus.
+                // Get block data
+                let block_bytes = state.make_block();
 
-                    if reply.send(proposal).is_err() {
-                        error!("Failed to send GetValue reply");
-                    }
-
-                    return Ok(());
-                }
-
-                // If we have not previously built a value for that very same height and round,
-                // we need to create a new value to propose and send it back to consensus.
-                let proposal = state.propose_value(height, round).await?;
+                let proposal = state
+                    .propose_value(height, round, block_bytes.clone())
+                    .await?;
 
                 // Send it to consensus
                 if reply.send(proposal.clone()).is_err() {
@@ -87,19 +78,13 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // Now what's left to do is to break down the value to propose into parts,
                 // and send those parts over the network to our peers, for them to re-assemble the full value.
-                for stream_message in state.stream_proposal(proposal) {
+                for stream_message in state.stream_proposal(proposal, block_bytes) {
                     info!(%height, %round, "Streaming proposal part: {stream_message:?}");
                     channels
                         .network
                         .send(NetworkMsg::PublishProposalPart(stream_message))
                         .await?;
                 }
-
-                // NOTE: In this tutorial, the value is simply an integer and therefore results in a very small
-                // message to gossip over the network, but if we were building a real application,
-                // say building blocks containing thousands of transactions, the proposal would typically only
-                // carry the block hash and the full block itself would be split into parts in order to
-                // avoid blowing up the bandwidth requirements by gossiping a single huge message.
             }
 
             // On the receiving end of these proposal parts (ie. when we are not the proposer),
@@ -108,12 +93,12 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // have all its constituent parts. Then we send that value back to consensus for it to
             // consider and vote for or against it (ie. vote `nil`), depending on its validity.
             AppMsg::ReceivedProposalPart { from, part, reply } => {
-                let part_type = match &part.content {
-                    StreamContent::Data(part) => part.get_type(),
-                    StreamContent::Fin(_) => "end of stream",
+                let (part_type, part_size) = match &part.content {
+                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(part)),
+                    StreamContent::Fin(_) => ("end of stream", 0),
                 };
 
-                info!(%from, %part.sequence, part.type = %part_type, "Received proposal part");
+                info!(%from, %part.sequence, part.type = %part_type, size = %part_size, "Received proposal part");
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
@@ -139,7 +124,11 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // providing it with a commit certificate which contains the ID of the value
             // that was decided on as well as the set of commits for that value,
             // ie. the precommits together with their (aggregated) signatures.
-            AppMsg::Decided { certificate, reply } => {
+            AppMsg::Decided {
+                certificate,
+                extensions,
+                reply,
+            } => {
                 info!(
                     height = %certificate.height, round = %certificate.round,
                     value = %certificate.value_id,
@@ -148,6 +137,9 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // When that happens, we store the decided value in our store
                 state.commit(certificate).await?;
+
+                // Pause briefly before starting next height, just to make following the logs easier
+                tokio::time::sleep(Duration::from_secs(1)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply
@@ -167,6 +159,8 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // for the heights in between the one we are currently at (included) and the one
             // that they are at. When the engine receives such a value, it will forward to the application
             // to decode it from its wire format and send back the decoded value to consensus.
+            //
+            // TODO: store the received value somewhere here
             AppMsg::ProcessSyncedValue {
                 height,
                 round,
@@ -178,6 +172,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 let value = decode_value(value_bytes);
 
+                // We send to consensus to see if it has been decided on
                 if reply
                     .send(ProposedValue {
                         height,
@@ -186,7 +181,6 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                         proposer,
                         value,
                         validity: Validity::Valid,
-                        extension: None,
                     })
                     .is_err()
                 {
@@ -224,6 +218,18 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
             AppMsg::RestreamProposal { .. } => {
                 error!("RestreamProposal not implemented");
+            }
+
+            AppMsg::ExtendVote { reply, .. } => {
+                if reply.send(None).is_err() {
+                    error!("Failed to send ExtendVote reply");
+                }
+            }
+
+            AppMsg::VerifyVoteExtension { reply, .. } => {
+                if reply.send(Ok(())).is_err() {
+                    error!("Failed to send VerifyVoteExtension reply");
+                }
             }
 
             AppMsg::PeerJoined { peer_id } => {
