@@ -1,6 +1,7 @@
+use bytes::Bytes;
 use malachitebft_core_types::{
-    CertificateError, CommitCertificate, CommitSignature, NilOrVal, SignedProposal,
-    SignedProposalPart, SignedVote, SigningProvider, VotingPower,
+    CertificateError, CommitCertificate, CommitSignature, NilOrVal, SignedExtension,
+    SignedProposal, SignedProposalPart, SignedVote, SigningProvider, VotingPower,
 };
 
 use crate::{Proposal, ProposalPart, TestContext, Validator, Vote};
@@ -120,5 +121,18 @@ impl SigningProvider<TestContext> for Ed25519Provider {
         }
 
         Ok(validator.voting_power())
+    }
+
+    fn sign_vote_extension(&self, _extension: Bytes) -> SignedExtension<TestContext> {
+        unimplemented!()
+    }
+
+    fn verify_signed_vote_extension(
+        &self,
+        _extension: &Bytes,
+        _signature: &Signature,
+        _public_key: &PublicKey,
+    ) -> bool {
+        unimplemented!()
     }
 }

@@ -1,6 +1,6 @@
 use color_eyre::eyre::{self, eyre};
-use tracing::{debug, error, info};
 use std::time::Duration;
+use tracing::{error, info};
 
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -67,7 +67,9 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 // Get block data
                 let block_bytes = state.make_block();
 
-                let proposal = state.propose_value(height, round, block_bytes.clone()).await?;
+                let proposal = state
+                    .propose_value(height, round, block_bytes.clone())
+                    .await?;
 
                 // Send it to consensus
                 if reply.send(proposal.clone()).is_err() {
@@ -92,7 +94,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // consider and vote for or against it (ie. vote `nil`), depending on its validity.
             AppMsg::ReceivedProposalPart { from, part, reply } => {
                 let (part_type, part_size) = match &part.content {
-                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(&part)),
+                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(part)),
                     StreamContent::Fin(_) => ("end of stream", 0),
                 };
 
@@ -125,7 +127,11 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // providing it with a commit certificate which contains the ID of the value
             // that was decided on as well as the set of commits for that value,
             // ie. the precommits together with their (aggregated) signatures.
-            AppMsg::Decided { certificate, reply } => {
+            AppMsg::Decided {
+                certificate,
+                extensions,
+                reply,
+            } => {
                 info!(
                     height = %certificate.height, round = %certificate.round,
                     value = %certificate.value_id,
@@ -178,7 +184,6 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                         proposer,
                         value,
                         validity: Validity::Valid,
-                        extension: None,
                     })
                     .is_err()
                 {
@@ -216,6 +221,18 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
             AppMsg::RestreamProposal { .. } => {
                 error!("RestreamProposal not implemented");
+            }
+
+            AppMsg::ExtendVote { reply, .. } => {
+                if reply.send(None).is_err() {
+                    error!("Failed to send ExtendVote reply");
+                }
+            }
+
+            AppMsg::VerifyVoteExtension { reply, .. } => {
+                if reply.send(Ok(())).is_err() {
+                    error!("Failed to send VerifyVoteExtension reply");
+                }
             }
 
             AppMsg::PeerJoined { peer_id } => {

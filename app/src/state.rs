@@ -4,12 +4,11 @@
 use std::collections::HashSet;
 
 use bytes::Bytes;
-use color_eyre::eyre::{self, eyre};
+use color_eyre::eyre;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
-use tracing::{debug, error, info};
-use hex;
+use tracing::{debug, error};
 
 use malachitebft_app_channel::app::streaming::{StreamContent, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -17,8 +16,8 @@ use malachitebft_app_channel::app::types::core::{CommitCertificate, Round, Valid
 use malachitebft_app_channel::app::types::{LocallyProposedValue, PeerId, ProposedValue};
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::{
-    Address, Genesis, Height, ProposalData, ProposalFin, ProposalInit, ProposalPart, TestContext,
-    ValidatorSet, Value,
+    Address, Ed25519Provider, Genesis, Height, ProposalData, ProposalFin, ProposalInit,
+    ProposalPart, TestContext, ValidatorSet, Value,
 };
 
 use crate::store::{DecidedValue, Store};
@@ -31,6 +30,7 @@ const BLOCK_SIZE: usize = 10241024;
 pub struct State {
     genesis: Genesis,
     ctx: TestContext,
+    signing_provider: Ed25519Provider,
     address: Address,
     store: Store,
     stream_id: u64,
@@ -73,6 +73,7 @@ impl State {
     pub fn new(
         genesis: Genesis,
         ctx: TestContext,
+        signing_provider: Ed25519Provider,
         address: Address,
         height: Height,
         store: Store,
@@ -80,6 +81,7 @@ impl State {
         Self {
             genesis,
             ctx,
+            signing_provider,
             current_height: height,
             current_round: Round::new(0),
             current_proposer: None,
@@ -114,7 +116,6 @@ impl State {
             return Ok(None);
         };
 
-
         // Check if the proposal is outdated
         if parts.height < self.current_height {
             debug!(
@@ -143,7 +144,9 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store.store_undecided_block_data(self.current_height, self.current_round, data).await?;
+        self.store
+            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .await?;
 
         Ok(Some(value))
     }
@@ -155,7 +158,11 @@ impl State {
 
     /// Retrieves a decided block data at the given height
     pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-        self.store.get_block_data(height, round).await.ok().flatten()
+        self.store
+            .get_block_data(height, round)
+            .await
+            .ok()
+            .flatten()
     }
 
     /// Commits a value with the given certificate, updating internal state
@@ -182,17 +189,22 @@ impl State {
             .await?;
 
         // Store block data for decided value
-        let block_data = self.store.get_block_data(certificate.height, certificate.round).await?;
-        
+        let block_data = self
+            .store
+            .get_block_data(certificate.height, certificate.round)
+            .await?;
+
         // Log first 32 bytes of block data with JNT prefix
         if let Some(data) = &block_data {
             if data.len() >= 32 {
                 println!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
             }
         }
-        
+
         if let Some(data) = block_data {
-            self.store.store_decided_block_data(certificate.height, data).await?;
+            self.store
+                .store_decided_block_data(certificate.height, data)
+                .await?;
         }
 
         // Prune the store, keep the last 5 heights
@@ -220,14 +232,13 @@ impl State {
             proposal.height,
             proposal.round,
             proposal.value,
-            proposal.extension.clone(),
         )))
     }
 
-    /// Make up a new value to propose
-    /// A real application would have a more complex logic here,
-    /// typically reaping transactions from a mempool and executing them against its state,
-    /// before computing the merkle root of the new app state.
+    // /// Make up a new value to propose
+    // /// A real application would have a more complex logic here,
+    // /// typically reaping transactions from a mempool and executing them against its state,
+    // /// before computing the merkle root of the new app state.
     // fn make_value(&mut self) -> Value {
     //     let value = self.rng.gen_range(100..=100000);
     //     Value::new(value)
@@ -260,7 +271,6 @@ impl State {
             proposer: self.address, // We are the proposer
             value,
             validity: Validity::Valid, // Our proposals are de facto valid
-            extension: None,           // Vote extension can be added here
         };
 
         // Insert the new proposal into the undecided proposals.
@@ -272,7 +282,6 @@ impl State {
             proposal.height,
             proposal.round,
             proposal.value,
-            proposal.extension,
         ))
     }
 
@@ -306,7 +315,11 @@ impl State {
         msgs.into_iter()
     }
 
-    fn make_proposal_parts(&self, value: LocallyProposedValue<TestContext>, data: Bytes) -> Vec<ProposalPart> {
+    fn make_proposal_parts(
+        &self,
+        value: LocallyProposedValue<TestContext>,
+        data: Bytes,
+    ) -> Vec<ProposalPart> {
         let mut hasher = sha3::Keccak256::new();
         let mut parts = Vec::new();
 
@@ -334,7 +347,7 @@ impl State {
 
         {
             let hash = hasher.finalize().to_vec();
-            let signature = self.ctx.signing_provider.sign(&hash);
+            let signature = self.signing_provider.sign(&hash);
             parts.push(ProposalPart::Fin(ProposalFin::new(signature)));
         }
 
@@ -383,11 +396,7 @@ impl State {
         let public_key = public_key.ok_or(SignatureVerificationError::ProposerNotFound)?;
 
         // Verify the signature
-        if !self
-            .ctx
-            .signing_provider
-            .verify(&hash, signature, &public_key)
-        {
+        if !self.signing_provider.verify(&hash, signature, &public_key) {
             return Err(SignatureVerificationError::InvalidSignature);
         }
 
@@ -400,7 +409,9 @@ impl State {
 /// This is done by multiplying all the factors in the parts.
 fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext>, Bytes) {
     // Calculate total size and allocate buffer
-    let total_size: usize = parts.parts.iter()
+    let total_size: usize = parts
+        .parts
+        .iter()
         .filter_map(|part| part.as_data())
         .map(|data| data.bytes.len())
         .sum();
@@ -421,7 +432,6 @@ fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext
         proposer: parts.proposer,
         value: Value::new(data.clone()),
         validity: Validity::Valid,
-        extension: None,
     };
 
     (proposed_value, data)

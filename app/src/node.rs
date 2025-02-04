@@ -18,7 +18,8 @@ use malachitebft_app_channel::app::Node;
 use malachitebft_reth_cli::metrics;
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::{
-    Address, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator, ValidatorSet,
+    Address, Ed25519Provider, Genesis, Height, PrivateKey, PublicKey, TestContext, Validator,
+    ValidatorSet,
 };
 
 use crate::metrics::DbMetrics;
@@ -40,9 +41,14 @@ impl Node for App {
     type Context = TestContext;
     type Genesis = Genesis;
     type PrivateKeyFile = PrivateKey;
+    type SigningProvider = Ed25519Provider;
 
     fn get_home_dir(&self) -> PathBuf {
         self.home_dir.to_owned()
+    }
+
+    fn get_signing_provider(&self, private_key: PrivateKey) -> Self::SigningProvider {
+        Ed25519Provider::new(private_key)
     }
 
     fn generate_private_key<R>(&self, rng: R) -> PrivateKey
@@ -103,7 +109,8 @@ impl Node for App {
         let private_key = self.load_private_key(private_key_file);
         let public_key = self.get_public_key(&private_key);
         let address = self.get_address(&public_key);
-        let ctx = TestContext::new(private_key);
+        let signing_provider = self.get_signing_provider(private_key);
+        let ctx = TestContext::new();
 
         let genesis = self.load_genesis(self.genesis_file.clone())?;
         let initial_validator_set = genesis.validator_set.clone();
@@ -111,7 +118,7 @@ impl Node for App {
         let codec = ProtobufCodec;
 
         let mut channels = malachitebft_app_channel::run(
-            ctx.clone(),
+            ctx,
             codec,
             self.clone(),
             self.config.clone(),
@@ -130,7 +137,7 @@ impl Node for App {
 
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
         let start_height = self.start_height.unwrap_or_default();
-        let mut state = State::new(genesis, ctx, address, start_height, store);
+        let mut state = State::new(genesis, ctx, signing_provider, address, start_height, store);
 
         crate::app::run(&mut state, &mut channels).await
     }
