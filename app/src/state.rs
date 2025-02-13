@@ -25,6 +25,9 @@ use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
 const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
+                                            //
+/// Size of chunks in which the data is split for streaming
+const CHUNK_SIZE: usize = 20 * 1024; // 20 KiB
 
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
@@ -355,7 +358,6 @@ impl State {
 
         // Data
         {
-            const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB chunks
             for chunk in data.chunks(CHUNK_SIZE) {
                 let chunk_data = ProposalData::new(Bytes::copy_from_slice(chunk));
                 parts.push(ProposalPart::Data(chunk_data));
