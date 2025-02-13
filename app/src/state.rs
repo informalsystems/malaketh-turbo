@@ -25,7 +25,7 @@ use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
 const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
-                                            //
+
 /// Size of chunks in which the data is split for streaming
 const CHUNK_SIZE: usize = 20 * 1024; // 20 KiB
 
