@@ -21,6 +21,8 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             AppMsg::ConsensusReady { reply } => {
                 info!("Consensus is ready");
 
+                tokio::time::sleep(Duration::from_millis(500)).await;
+
                 // We can simply respond by telling the engine to start consensus
                 // at the current height, which is initially 1
                 if reply
