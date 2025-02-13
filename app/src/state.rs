@@ -172,17 +172,29 @@ impl State {
         &mut self,
         certificate: CommitCertificate<TestContext>,
     ) -> eyre::Result<()> {
-        let Ok(Some(proposal)) = self
+        info!(
+            height = %certificate.height,
+            round = %certificate.round,
+            "Looking for certificate"
+        );
+
+        let proposal = self
             .store
             .get_undecided_proposal(certificate.height, certificate.round)
-            .await
-        else {
-            error!(
-                height = %certificate.height,
-                "Trying to commit a value that is not decided"
-            );
+            .await;
 
-            return Ok(()); // FIXME: Return an actual error and handle in caller
+        let proposal = match proposal {
+            Ok(Some(proposal)) => proposal,
+            Ok(None) => {
+                error!(
+                    height = %certificate.height,
+                    round = %certificate.round,
+                    "Trying to commit a value that is not decided"
+                );
+
+                return Ok(()); // FIXME: Return an actual error and handle in caller
+            }
+            Err(e) => return Err(e.into()),
         };
 
         self.store
