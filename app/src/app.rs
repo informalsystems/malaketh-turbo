@@ -96,11 +96,14 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // consider and vote for or against it (ie. vote `nil`), depending on its validity.
             AppMsg::ReceivedProposalPart { from, part, reply } => {
                 let (part_type, part_size) = match &part.content {
-                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(part)),
+                    StreamContent::Data(part) => (part.get_type(), part.size_bytes()),
                     StreamContent::Fin => ("end of stream", 0),
                 };
 
-                info!(%from, %part.sequence, part.type = %part_type, size = %part_size, "Received proposal part");
+                info!(
+                    %from, %part.sequence, part.type = %part_type, part.size = %part_size,
+                    "Received proposal part"
+                );
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
