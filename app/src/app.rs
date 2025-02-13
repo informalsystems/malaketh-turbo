@@ -97,7 +97,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             AppMsg::ReceivedProposalPart { from, part, reply } => {
                 let (part_type, part_size) = match &part.content {
                     StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(part)),
-                    StreamContent::Fin(_) => ("end of stream", 0),
+                    StreamContent::Fin => ("end of stream", 0),
                 };
 
                 info!(%from, %part.sequence, part.type = %part_type, size = %part_size, "Received proposal part");
@@ -127,9 +127,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // that was decided on as well as the set of commits for that value,
             // ie. the precommits together with their (aggregated) signatures.
             AppMsg::Decided {
-                certificate,
-                extensions,
-                reply,
+                certificate, reply, ..
             } => {
                 info!(
                     height = %certificate.height, round = %certificate.round,

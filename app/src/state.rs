@@ -10,7 +10,7 @@ use rand::{Rng, SeedableRng};
 use sha3::Digest;
 use tracing::{debug, error, info};
 
-use malachitebft_app_channel::app::streaming::{StreamContent, StreamMessage};
+use malachitebft_app_channel::app::streaming::{StreamContent, StreamId, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{CommitCertificate, Round, Validity};
 use malachitebft_app_channel::app::types::{LocallyProposedValue, PeerId, ProposedValue};
@@ -33,7 +33,7 @@ pub struct State {
     signing_provider: Ed25519Provider,
     address: Address,
     store: Store,
-    stream_id: u64,
+    stream_nonce: u32,
     streams_map: PartStreamsMap,
     rng: StdRng,
 
@@ -87,7 +87,7 @@ impl State {
             current_proposer: None,
             address,
             store,
-            stream_id: 0,
+            stream_nonce: 0,
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             peers: HashSet::new(),
@@ -286,6 +286,15 @@ impl State {
         ))
     }
 
+    fn stream_id(&mut self) -> StreamId {
+        let mut bytes = Vec::with_capacity(size_of::<u64>() + size_of::<u32>());
+        bytes.extend_from_slice(&self.current_height.as_u64().to_be_bytes());
+        bytes.extend_from_slice(&self.current_round.as_u32().unwrap().to_be_bytes());
+        bytes.extend_from_slice(&self.stream_nonce.to_be_bytes());
+        self.stream_nonce += 1;
+        StreamId::new(bytes.into())
+    }
+
     /// Creates a stream message containing a proposal part.
     /// Updates internal sequence number and current proposal.
     pub fn stream_proposal(
@@ -295,24 +304,18 @@ impl State {
     ) -> impl Iterator<Item = StreamMessage<ProposalPart>> {
         let parts = self.make_proposal_parts(value, data);
 
-        let stream_id = self.stream_id;
-        self.stream_id += 1;
+        let stream_id = self.stream_id();
 
         let mut msgs = Vec::with_capacity(parts.len() + 1);
         let mut sequence = 0;
 
         for part in parts {
-            let msg = StreamMessage::new(stream_id, sequence, StreamContent::Data(part));
+            let msg = StreamMessage::new(stream_id.clone(), sequence, StreamContent::Data(part));
             sequence += 1;
             msgs.push(msg);
         }
 
-        msgs.push(StreamMessage::new(
-            stream_id,
-            sequence,
-            StreamContent::Fin(true),
-        ));
-
+        msgs.push(StreamMessage::new(stream_id, sequence, StreamContent::Fin));
         msgs.into_iter()
     }
 
