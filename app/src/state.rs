@@ -135,6 +135,17 @@ impl State {
             return Ok(None);
         }
 
+        if let Err(e) = self.verify_proposal_signature(&parts) {
+            error!(
+                height = %self.current_height,
+                round = %self.current_round,
+                error = ?e,
+                "Received proposal with invalid signature, ignoring"
+            );
+
+            return Ok(None);
+        }
+
         // Re-assemble the proposal from its parts
         let (value, data) = assemble_value_from_parts(parts);
 
