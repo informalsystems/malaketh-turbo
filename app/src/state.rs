@@ -27,7 +27,7 @@ use crate::streaming::{PartStreamsMap, ProposalParts};
 const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
 
 /// Size of chunks in which the data is split for streaming
-const CHUNK_SIZE: usize = 20 * 1024; // 20 KiB
+const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
