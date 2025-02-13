@@ -173,14 +173,14 @@ impl State {
         self.store.get_decided_value(height).await.ok().flatten()
     }
 
-    /// Retrieves a decided block data at the given height
-    pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-        self.store
-            .get_block_data(height, round)
-            .await
-            .ok()
-            .flatten()
-    }
+    // /// Retrieves a decided block data at the given height
+    // pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
+    //     self.store
+    //         .get_block_data(height, round)
+    //         .await
+    //         .ok()
+    //         .flatten()
+    // }
 
     /// Commits a value with the given certificate, updating internal state
     /// and moving to the next height
@@ -247,22 +247,22 @@ impl State {
         Ok(())
     }
 
-    /// Retrieves a previously built proposal value for the given height
-    pub async fn get_previously_built_value(
-        &self,
-        height: Height,
-        round: Round,
-    ) -> eyre::Result<Option<LocallyProposedValue<TestContext>>> {
-        let Some(proposal) = self.store.get_undecided_proposal(height, round).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(LocallyProposedValue::new(
-            proposal.height,
-            proposal.round,
-            proposal.value,
-        )))
-    }
+    // /// Retrieves a previously built proposal value for the given height
+    // pub async fn get_previously_built_value(
+    //     &self,
+    //     height: Height,
+    //     round: Round,
+    // ) -> eyre::Result<Option<LocallyProposedValue<TestContext>>> {
+    //     let Some(proposal) = self.store.get_undecided_proposal(height, round).await? else {
+    //         return Ok(None);
+    //     };
+    //
+    //     Ok(Some(LocallyProposedValue::new(
+    //         proposal.height,
+    //         proposal.round,
+    //         proposal.value,
+    //     )))
+    // }
 
     // /// Make up a new value to propose
     // /// A real application would have a more complex logic here,
