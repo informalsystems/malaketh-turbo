@@ -8,7 +8,7 @@ use color_eyre::eyre;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use malachitebft_app_channel::app::streaming::{StreamContent, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -135,10 +135,11 @@ impl State {
 
         // Log first 32 bytes of proposal data and total size
         if data.len() >= 32 {
-            println!(
-                "Proposal data[0..32]: {}, total_size: {} bytes",
+            info!(
+                "Proposal data[0..32]: {}, total_size: {} bytes, id: {:x}",
                 hex::encode(&data[..32]),
-                data.len()
+                data.len(),
+                value.value.id().as_u64()
             );
         }
 
@@ -197,7 +198,7 @@ impl State {
         // Log first 32 bytes of block data with JNT prefix
         if let Some(data) = &block_data {
             if data.len() >= 32 {
-                println!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
+                info!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
             }
         }
 
