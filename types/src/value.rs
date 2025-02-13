@@ -1,4 +1,4 @@
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use core::fmt;
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 use serde::{Deserialize, Serialize};
@@ -35,26 +35,12 @@ impl Protobuf for ValueId {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn from_proto(proto: Self::Proto) -> Result<Self, ProtoError> {
-        let bytes = proto
-            .value
-            .ok_or_else(|| ProtoError::missing_field::<Self::Proto>("value"))?;
-
-        let len = bytes.len();
-        let bytes = <[u8; 8]>::try_from(bytes.as_ref()).map_err(|_| {
-            ProtoError::Other(format!(
-                "Invalid value length, got {len} bytes expected {}",
-                u64::BITS / 8
-            ))
-        })?;
-
-        Ok(ValueId::new(u64::from_be_bytes(bytes)))
+        Ok(ValueId::new(proto.value))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
-        Ok(proto::ValueId {
-            value: Some(self.0.to_be_bytes().to_vec().into()),
-        })
+        Ok(proto::ValueId { value: self.0 })
     }
 }
 
@@ -68,12 +54,12 @@ pub struct Value {
 impl Value {
     /// Creates a new Value by hashing the provided bytes using SipHash
     pub fn new(data: Bytes) -> Self {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new(); // Uses SipHash
         data.hash(&mut hasher);
-        
+
         Self {
             value: hasher.finish(), // Get the u64 hash
             extensions: data,       // Store original bytes as extensions
@@ -102,33 +88,17 @@ impl Protobuf for Value {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn from_proto(proto: Self::Proto) -> Result<Self, ProtoError> {
-        let bytes = proto
-            .value
-            .ok_or_else(|| ProtoError::missing_field::<Self::Proto>("value"))?;
+        let value = proto.value;
+        let extensions = proto.extensions;
 
-        let value = bytes[0..8].try_into().map_err(|_| {
-            ProtoError::Other(format!(
-                "Too few bytes, expected at least {}",
-                u64::BITS / 8
-            ))
-        })?;
-
-        let extensions = bytes.slice(8..);
-
-        Ok(Value {
-            value: u64::from_be_bytes(value),
-            extensions,
-        })
+        Ok(Value { value, extensions })
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
-        let mut bytes = BytesMut::new();
-        bytes.extend_from_slice(&self.value.to_be_bytes());
-        bytes.extend_from_slice(&self.extensions);
-
         Ok(proto::Value {
-            value: Some(bytes.freeze()),
+            value: self.value,
+            extensions: self.extensions.clone(),
         })
     }
 }

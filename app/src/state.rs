@@ -8,9 +8,9 @@ use color_eyre::eyre;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
-use malachitebft_app_channel::app::streaming::{StreamContent, StreamMessage};
+use malachitebft_app_channel::app::streaming::{StreamContent, StreamId, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{CommitCertificate, Round, Validity};
 use malachitebft_app_channel::app::types::{LocallyProposedValue, PeerId, ProposedValue};
@@ -24,16 +24,21 @@ use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
-const BLOCK_SIZE: usize = 10241024;
+const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
+
+/// Size of chunks in which the data is split for streaming
+const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
+
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
 pub struct State {
-    genesis: Genesis,
+    #[allow(dead_code)]
     ctx: TestContext,
+    genesis: Genesis,
     signing_provider: Ed25519Provider,
     address: Address,
     store: Store,
-    stream_id: u64,
+    stream_nonce: u32,
     streams_map: PartStreamsMap,
     rng: StdRng,
 
@@ -87,7 +92,7 @@ impl State {
             current_proposer: None,
             address,
             store,
-            stream_id: 0,
+            stream_nonce: 0,
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             peers: HashSet::new(),
@@ -130,15 +135,27 @@ impl State {
             return Ok(None);
         }
 
+        if let Err(e) = self.verify_proposal_signature(&parts) {
+            error!(
+                height = %self.current_height,
+                round = %self.current_round,
+                error = ?e,
+                "Received proposal with invalid signature, ignoring"
+            );
+
+            return Ok(None);
+        }
+
         // Re-assemble the proposal from its parts
         let (value, data) = assemble_value_from_parts(parts);
 
         // Log first 32 bytes of proposal data and total size
         if data.len() >= 32 {
-            println!(
-                "Proposal data[0..32]: {}, total_size: {} bytes",
+            info!(
+                "Proposal data[0..32]: {}, total_size: {} bytes, id: {:x}",
                 hex::encode(&data[..32]),
-                data.len()
+                data.len(),
+                value.value.id().as_u64()
             );
         }
 
@@ -156,14 +173,14 @@ impl State {
         self.store.get_decided_value(height).await.ok().flatten()
     }
 
-    /// Retrieves a decided block data at the given height
-    pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-        self.store
-            .get_block_data(height, round)
-            .await
-            .ok()
-            .flatten()
-    }
+    // /// Retrieves a decided block data at the given height
+    // pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
+    //     self.store
+    //         .get_block_data(height, round)
+    //         .await
+    //         .ok()
+    //         .flatten()
+    // }
 
     /// Commits a value with the given certificate, updating internal state
     /// and moving to the next height
@@ -171,17 +188,29 @@ impl State {
         &mut self,
         certificate: CommitCertificate<TestContext>,
     ) -> eyre::Result<()> {
-        let Ok(Some(proposal)) = self
+        info!(
+            height = %certificate.height,
+            round = %certificate.round,
+            "Looking for certificate"
+        );
+
+        let proposal = self
             .store
             .get_undecided_proposal(certificate.height, certificate.round)
-            .await
-        else {
-            error!(
-                height = %certificate.height,
-                "Trying to commit a value that is not decided"
-            );
+            .await;
 
-            return Ok(()); // FIXME: Return an actual error and handle in caller
+        let proposal = match proposal {
+            Ok(Some(proposal)) => proposal,
+            Ok(None) => {
+                error!(
+                    height = %certificate.height,
+                    round = %certificate.round,
+                    "Trying to commit a value that is not decided"
+                );
+
+                return Ok(()); // FIXME: Return an actual error and handle in caller
+            }
+            Err(e) => return Err(e.into()),
         };
 
         self.store
@@ -197,7 +226,7 @@ impl State {
         // Log first 32 bytes of block data with JNT prefix
         if let Some(data) = &block_data {
             if data.len() >= 32 {
-                println!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
+                info!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
             }
         }
 
@@ -218,22 +247,22 @@ impl State {
         Ok(())
     }
 
-    /// Retrieves a previously built proposal value for the given height
-    pub async fn get_previously_built_value(
-        &self,
-        height: Height,
-        round: Round,
-    ) -> eyre::Result<Option<LocallyProposedValue<TestContext>>> {
-        let Some(proposal) = self.store.get_undecided_proposal(height, round).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(LocallyProposedValue::new(
-            proposal.height,
-            proposal.round,
-            proposal.value,
-        )))
-    }
+    // /// Retrieves a previously built proposal value for the given height
+    // pub async fn get_previously_built_value(
+    //     &self,
+    //     height: Height,
+    //     round: Round,
+    // ) -> eyre::Result<Option<LocallyProposedValue<TestContext>>> {
+    //     let Some(proposal) = self.store.get_undecided_proposal(height, round).await? else {
+    //         return Ok(None);
+    //     };
+    //
+    //     Ok(Some(LocallyProposedValue::new(
+    //         proposal.height,
+    //         proposal.round,
+    //         proposal.value,
+    //     )))
+    // }
 
     // /// Make up a new value to propose
     // /// A real application would have a more complex logic here,
@@ -285,6 +314,15 @@ impl State {
         ))
     }
 
+    fn stream_id(&mut self) -> StreamId {
+        let mut bytes = Vec::with_capacity(size_of::<u64>() + size_of::<u32>());
+        bytes.extend_from_slice(&self.current_height.as_u64().to_be_bytes());
+        bytes.extend_from_slice(&self.current_round.as_u32().unwrap().to_be_bytes());
+        bytes.extend_from_slice(&self.stream_nonce.to_be_bytes());
+        self.stream_nonce += 1;
+        StreamId::new(bytes.into())
+    }
+
     /// Creates a stream message containing a proposal part.
     /// Updates internal sequence number and current proposal.
     pub fn stream_proposal(
@@ -294,24 +332,18 @@ impl State {
     ) -> impl Iterator<Item = StreamMessage<ProposalPart>> {
         let parts = self.make_proposal_parts(value, data);
 
-        let stream_id = self.stream_id;
-        self.stream_id += 1;
+        let stream_id = self.stream_id();
 
         let mut msgs = Vec::with_capacity(parts.len() + 1);
         let mut sequence = 0;
 
         for part in parts {
-            let msg = StreamMessage::new(stream_id, sequence, StreamContent::Data(part));
+            let msg = StreamMessage::new(stream_id.clone(), sequence, StreamContent::Data(part));
             sequence += 1;
             msgs.push(msg);
         }
 
-        msgs.push(StreamMessage::new(
-            stream_id,
-            sequence,
-            StreamContent::Fin(true),
-        ));
-
+        msgs.push(StreamMessage::new(stream_id, sequence, StreamContent::Fin));
         msgs.into_iter()
     }
 
@@ -337,7 +369,6 @@ impl State {
 
         // Data
         {
-            const CHUNK_SIZE: usize = 20 * 1024; // 20KB chunks
             for chunk in data.chunks(CHUNK_SIZE) {
                 let chunk_data = ProposalData::new(Bytes::copy_from_slice(chunk));
                 parts.push(ProposalPart::Data(chunk_data));
@@ -376,7 +407,7 @@ impl State {
                     hasher.update(init.round.as_i64().to_be_bytes());
                 }
                 ProposalPart::Data(data) => {
-                    hasher.update(data.bytes.clone());
+                    hasher.update(data.bytes.as_ref());
                 }
                 ProposalPart::Fin(fin) => {
                     signature = Some(&fin.signature);

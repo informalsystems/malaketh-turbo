@@ -74,6 +74,10 @@ impl ProposalPart {
     pub fn to_sign_bytes(&self) -> Bytes {
         proto::Protobuf::to_bytes(self).unwrap()
     }
+
+    pub fn size_bytes(&self) -> usize {
+        self.to_sign_bytes().len() // FIXME: This is dumb
+    }
 }
 
 /// A part of a value for a height, round. Identified in this scope by the sequence.

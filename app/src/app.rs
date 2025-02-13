@@ -21,6 +21,8 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             AppMsg::ConsensusReady { reply } => {
                 info!("Consensus is ready");
 
+                tokio::time::sleep(Duration::from_millis(500)).await;
+
                 // We can simply respond by telling the engine to start consensus
                 // at the current height, which is initially 1
                 if reply
@@ -80,6 +82,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 // and send those parts over the network to our peers, for them to re-assemble the full value.
                 for stream_message in state.stream_proposal(proposal, block_bytes) {
                     info!(%height, %round, "Streaming proposal part: {stream_message:?}");
+
                     channels
                         .network
                         .send(NetworkMsg::PublishProposalPart(stream_message))
@@ -94,11 +97,14 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // consider and vote for or against it (ie. vote `nil`), depending on its validity.
             AppMsg::ReceivedProposalPart { from, part, reply } => {
                 let (part_type, part_size) = match &part.content {
-                    StreamContent::Data(part) => (part.get_type(), std::mem::size_of_val(part)),
-                    StreamContent::Fin(_) => ("end of stream", 0),
+                    StreamContent::Data(part) => (part.get_type(), part.size_bytes()),
+                    StreamContent::Fin => ("end of stream", 0),
                 };
 
-                info!(%from, %part.sequence, part.type = %part_type, size = %part_size, "Received proposal part");
+                info!(
+                    %from, %part.sequence, part.type = %part_type, part.size = %part_size,
+                    "Received proposal part"
+                );
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
 
@@ -125,9 +131,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // that was decided on as well as the set of commits for that value,
             // ie. the precommits together with their (aggregated) signatures.
             AppMsg::Decided {
-                certificate,
-                extensions,
-                reply,
+                certificate, reply, ..
             } => {
                 info!(
                     height = %certificate.height, round = %certificate.round,

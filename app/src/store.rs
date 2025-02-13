@@ -216,9 +216,6 @@ impl Db {
         Ok(())
     }
 
-    
-
-
     fn height_range<Table>(
         &self,
         table: &Table,
@@ -277,7 +274,8 @@ impl Db {
             }
 
             let mut undecided_block_data = tx.open_table(UNDECIDED_BLOCK_DATA_TABLE)?;
-            let keys = self.block_data_range(&undecided_block_data, ..(retain_height, Round::Nil))?;
+            let keys =
+                self.block_data_range(&undecided_block_data, ..(retain_height, Round::Nil))?;
             for key in &keys {
                 undecided_block_data.remove(key)?;
             }
@@ -341,18 +339,18 @@ impl Db {
 
     fn get_block_data(&self, height: Height, round: Round) -> Result<Option<Bytes>, StoreError> {
         let start = Instant::now();
-        let mut read_bytes = 0;
 
         let tx = self.db.begin_read()?;
-        
+
         // Try undecided block data first
         let undecided_table = tx.open_table(UNDECIDED_BLOCK_DATA_TABLE)?;
         if let Some(data) = undecided_table.get(&(height, round))? {
             let bytes = data.value();
-            read_bytes = bytes.len() as u64;
+            let read_bytes = bytes.len() as u64;
             self.metrics.observe_read_time(start.elapsed());
             self.metrics.add_read_bytes(read_bytes);
-            self.metrics.add_key_read_bytes((size_of::<Height>() + size_of::<Round>()) as u64);
+            self.metrics
+                .add_key_read_bytes((size_of::<Height>() + size_of::<Round>()) as u64);
             return Ok(Some(Bytes::copy_from_slice(&bytes)));
         }
 
@@ -360,7 +358,7 @@ impl Db {
         let decided_table = tx.open_table(DECIDED_BLOCK_DATA_TABLE)?;
         if let Some(data) = decided_table.get(&height)? {
             let bytes = data.value();
-            read_bytes = bytes.len() as u64;
+            let read_bytes = bytes.len() as u64;
             self.metrics.observe_read_time(start.elapsed());
             self.metrics.add_read_bytes(read_bytes);
             self.metrics.add_key_read_bytes(size_of::<Height>() as u64);
@@ -371,7 +369,12 @@ impl Db {
         Ok(None)
     }
 
-    fn insert_undecided_block_data(&self, height: Height, round: Round, data: Bytes) -> Result<(), StoreError> {
+    fn insert_undecided_block_data(
+        &self,
+        height: Height,
+        round: Round,
+        data: Bytes,
+    ) -> Result<(), StoreError> {
         let start = Instant::now();
         let write_bytes = data.len() as u64;
 
@@ -486,17 +489,31 @@ impl Store {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.prune(retain_height)).await?
     }
-    pub async fn get_block_data(&self, height: Height, round: Round) -> Result<Option<Bytes>, StoreError> {
+    pub async fn get_block_data(
+        &self,
+        height: Height,
+        round: Round,
+    ) -> Result<Option<Bytes>, StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.get_block_data(height, round)).await?
     }
 
-    pub async fn store_undecided_block_data(&self, height: Height, round: Round, data: Bytes) -> Result<(), StoreError> {
+    pub async fn store_undecided_block_data(
+        &self,
+        height: Height,
+        round: Round,
+        data: Bytes,
+    ) -> Result<(), StoreError> {
         let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || db.insert_undecided_block_data(height, round, data)).await?
+        tokio::task::spawn_blocking(move || db.insert_undecided_block_data(height, round, data))
+            .await?
     }
 
-    pub async fn store_decided_block_data(&self, height: Height, data: Bytes) -> Result<(), StoreError> {
+    pub async fn store_decided_block_data(
+        &self,
+        height: Height,
+        data: Bytes,
+    ) -> Result<(), StoreError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || db.insert_decided_block_data(height, data)).await?
     }
