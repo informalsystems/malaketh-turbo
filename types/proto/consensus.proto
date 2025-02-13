@@ -7,11 +7,12 @@ message Address {
 }
 
 message Value {
-    optional bytes value = 1;
+    uint64 value = 1;
+    bytes extensions = 2;
 }
 
 message ValueId {
-    optional bytes value = 1;
+    uint64 value = 1;
 }
 
 enum VoteType {
