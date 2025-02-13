@@ -392,7 +392,7 @@ impl State {
                     hasher.update(init.round.as_i64().to_be_bytes());
                 }
                 ProposalPart::Data(data) => {
-                    hasher.update(data.bytes.clone());
+                    hasher.update(data.bytes.as_ref());
                 }
                 ProposalPart::Fin(fin) => {
                     signature = Some(&fin.signature);

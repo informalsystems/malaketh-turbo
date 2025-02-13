@@ -46,10 +46,13 @@ impl<T> MinHeap<T> {
     }
 
     fn drain(&mut self) -> Vec<T> {
-        self.0
-            .drain()
-            .filter_map(|msg| msg.0.content.into_data())
-            .collect()
+        let mut vec = Vec::with_capacity(self.0.len());
+        while let Some(MinSeq(msg)) = self.0.pop() {
+            if let Some(data) = msg.content.into_data() {
+                vec.push(data);
+            }
+        }
+        vec
     }
 }
 
@@ -118,6 +121,7 @@ impl PartStreamsMap {
         msg: StreamMessage<ProposalPart>,
     ) -> Option<ProposalParts> {
         let stream_id = msg.stream_id.clone();
+
         let state = self
             .streams
             .entry((peer_id, stream_id.clone()))
