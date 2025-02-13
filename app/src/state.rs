@@ -24,12 +24,14 @@ use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
-const BLOCK_SIZE: usize = 10241024;
+const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
+
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
 pub struct State {
-    genesis: Genesis,
+    #[allow(dead_code)]
     ctx: TestContext,
+    genesis: Genesis,
     signing_provider: Ed25519Provider,
     address: Address,
     store: Store,
@@ -353,7 +355,7 @@ impl State {
 
         // Data
         {
-            const CHUNK_SIZE: usize = 20 * 1024; // 20KB chunks
+            const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB chunks
             for chunk in data.chunks(CHUNK_SIZE) {
                 let chunk_data = ProposalData::new(Bytes::copy_from_slice(chunk));
                 parts.push(ProposalPart::Data(chunk_data));

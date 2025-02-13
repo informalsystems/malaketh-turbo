@@ -82,6 +82,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 // and send those parts over the network to our peers, for them to re-assemble the full value.
                 for stream_message in state.stream_proposal(proposal, block_bytes) {
                     info!(%height, %round, "Streaming proposal part: {stream_message:?}");
+
                     channels
                         .network
                         .send(NetworkMsg::PublishProposalPart(stream_message))
