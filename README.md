@@ -54,3 +54,17 @@ Press `Ctrl-C` to stop all the nodes.
 ```
 rm -rf ./nodes; cargo build; cargo run -- testnet --nodes 3 --home nodes; bash scripts/spawn.bash --nodes 3 --home nodes
 ```
+
+### Run testnet with each consensus engine connected to an execution engine (Reth)
+
+Just run `make`.
+
+This will deploy:
+- 3 Reth instances on ports 8551 (default), 18551, and 28551.
+- 3 Malachite nodes, connected to the Reth instances.
+
+Tip: one can explore the blockchain with the `cast` tool that comes with [foundry](https://book.getfoundry.sh/getting-started/installation). For example:
+```
+cast block 3 # will show the block #3's content
+cast balances ... # will show the balance of an account
+```

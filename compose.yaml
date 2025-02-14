@@ -1,0 +1,101 @@
+services:
+  reth0:
+    image: ghcr.io/paradigmxyz/reth:latest
+    container_name: reth0
+    volumes:
+      - ./rethdata/0:/root/.local/share/reth/mainnet
+      - ./assets:/root/assets/
+    ports:
+      - "9001:9001"
+      - "8545:8545"
+      - "8551:8551"
+      - "30303:30303"
+      - "30303:30303/udp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    command:
+      - "node"
+      - "-vvvvv"
+      - "-d"
+      - "--datadir=/data/reth/execution-data"
+      - "--chain=/root/assets/genesis.json"
+      - "--http"
+      - "--http.port=8545"
+      - "--http.addr=0.0.0.0"
+      - "--http.corsdomain=*"
+      - "--http.api=admin,net,eth,web3,debug,txpool,trace"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.jwtsecret=/root/assets/jwtsecret"
+      - "--metrics=0.0.0.0:9001"
+      - "--identity=reth0"
+      # - "--discovery.port=30303"
+      # - "--port=303"
+
+  reth1:
+    image: ghcr.io/paradigmxyz/reth:latest
+    container_name: reth1
+    volumes:
+      - ./rethdata/1:/root/.local/share/reth/mainnet
+      - ./assets:/root/assets/
+    ports:
+      - "19001:9001"
+      - "18545:8545"
+      - "18551:8551"
+      - "40303:30303"
+      - "40303:30303/udp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    command:
+      - "node"
+      - "-vvvvv"
+      - "-d"
+      - "--datadir=/data/reth/execution-data"
+      - "--chain=/root/assets/genesis.json"
+      - "--http"
+      - "--http.port=8545"
+      - "--http.addr=0.0.0.0"
+      - "--http.corsdomain=*"
+      - "--http.api=admin,net,eth,web3,debug,txpool,trace"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.jwtsecret=/root/assets/jwtsecret"
+      - "--metrics=0.0.0.0:9001"
+      - "--identity=reth1"
+
+  reth2:
+    image: ghcr.io/paradigmxyz/reth:latest
+    container_name: reth2
+    volumes:
+      - ./rethdata/2:/root/.local/share/reth/mainnet
+      - ./assets:/root/assets/
+    ports:
+      - "29001:9001"
+      - "28545:8545"
+      - "28551:8551"
+      - "50303:30303"
+      - "50303:30303/udp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    command:
+      - "node"
+      - "-vvvvv"
+      - "-d"
+      - "--datadir=/data/reth/execution-data"
+      - "--chain=/root/assets/genesis.json"
+      - "--http"
+      - "--http.port=8545"
+      - "--http.addr=0.0.0.0"
+      - "--http.corsdomain=*"
+      - "--http.api=admin,net,eth,web3,debug,txpool,trace"
+      - "--authrpc.addr=0.0.0.0"
+      - "--authrpc.port=8551"
+      - "--authrpc.jwtsecret=/root/assets/jwtsecret"
+      - "--metrics=0.0.0.0:9001"
+      - "--identity=reth2"
