@@ -16,7 +16,7 @@ use malachitebft_app_channel::app::types::core::{CommitCertificate, Round, Valid
 use malachitebft_app_channel::app::types::{LocallyProposedValue, PeerId, ProposedValue};
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::{
-    Address, Ed25519Provider, Genesis, Height, ProposalData, ProposalFin, ProposalInit,
+    Address, BlockHash, Ed25519Provider, Genesis, Height, ProposalData, ProposalFin, ProposalInit,
     ProposalPart, TestContext, ValidatorSet, Value,
 };
 
@@ -24,6 +24,7 @@ use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
 /// Size of randomly generated blocks in bytes
+#[allow(dead_code)]
 const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
 
 /// Size of chunks in which the data is split for streaming
@@ -40,12 +41,16 @@ pub struct State {
     store: Store,
     stream_nonce: u32,
     streams_map: PartStreamsMap,
+    #[allow(dead_code)]
     rng: StdRng,
 
     pub current_height: Height,
     pub current_round: Round,
     pub current_proposer: Option<Address>,
     pub peers: HashSet<PeerId>,
+
+    // TODO: is this value already available somewhere in the state?
+    pub head_block_hash: Option<BlockHash>,
 }
 
 /// Represents errors that can occur during the verification of a proposal's signature.
@@ -96,6 +101,8 @@ impl State {
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             peers: HashSet::new(),
+
+            head_block_hash: None,
         }
     }
 
@@ -161,11 +168,16 @@ impl State {
 
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
-        self.store
-            .store_undecided_block_data(self.current_height, self.current_round, data)
-            .await?;
+        self.store_undecided_proposal_data(data).await?;
 
         Ok(Some(value))
+    }
+
+    pub async fn store_undecided_proposal_data(&mut self, data: Bytes) -> eyre::Result<()> {
+        self.store
+            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .await
+            .map_err(|e| eyre::Report::new(e))
     }
 
     /// Retrieves a decided block at the given height
@@ -173,14 +185,14 @@ impl State {
         self.store.get_decided_value(height).await.ok().flatten()
     }
 
-    // /// Retrieves a decided block data at the given height
-    // pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-    //     self.store
-    //         .get_block_data(height, round)
-    //         .await
-    //         .ok()
-    //         .flatten()
-    // }
+    /// Retrieves a decided block data at the given height
+    pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
+        self.store
+            .get_block_data(height, round)
+            .await
+            .ok()
+            .flatten()
+    }
 
     /// Commits a value with the given certificate, updating internal state
     /// and moving to the next height
@@ -273,6 +285,7 @@ impl State {
     //     Value::new(value)
     // }
 
+    #[allow(dead_code)]
     pub fn make_block(&mut self) -> Bytes {
         let mut random_bytes = vec![0u8; BLOCK_SIZE];
         self.rng.fill(&mut random_bytes[..]);
@@ -432,6 +445,10 @@ impl State {
         }
 
         Ok(())
+    }
+
+    pub fn is_current_proposer(&self) -> bool {
+        self.current_proposer == Some(self.address)
     }
 }
 

@@ -2,11 +2,14 @@
 //! cryptographic library used for signing.
 
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use async_trait::async_trait;
 use color_eyre::eyre;
 use malachitebft_app_channel::app::events::{RxEvent, TxEvent};
 use malachitebft_app_channel::app::NodeHandle;
+use malachitebft_reth_engine::engine::Engine;
+use malachitebft_reth_engine::http::HttpJsonRpc;
 use rand::{CryptoRng, RngCore};
 
 use malachitebft_app_channel::app::metrics::SharedRegistry;
@@ -24,6 +27,7 @@ use malachitebft_reth_types::{
     ValidatorSet,
 };
 use tokio::task::JoinHandle;
+use url::Url;
 
 use crate::metrics::DbMetrics;
 use crate::state::State;
@@ -161,8 +165,21 @@ impl Node for App {
         let start_height = self.start_height.unwrap_or_default();
         let mut state = State::new(genesis, ctx, signing_provider, address, start_height, store);
 
+        let engine: Engine = {
+            // TODO: make EL host, EL port, and jwt secret configurable
+            let port = match self.config.moniker.as_str() {
+                "test-0" => 8551,
+                "test-1" => 18551,
+                "test-2" => 28551,
+                _ => 8551,
+            };
+            let url = Url::parse(&format!("http://localhost:{}", port))?;
+            let jwt_path = PathBuf::from_str("./assets/jwtsecret")?; // Should be the same secret used by the execution client.
+            Engine::new(HttpJsonRpc::new(url, jwt_path)?)
+        };
+
         let app_handle = tokio::spawn(async move {
-            if let Err(e) = crate::app::run(&mut state, &mut channels).await {
+            if let Err(e) = crate::app::run(&mut state, &mut channels, engine).await {
                 tracing::error!(%e, "Application error");
             }
         });

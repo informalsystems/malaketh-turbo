@@ -13,8 +13,14 @@ workspace = true
 [dependencies]
 malachitebft-reth-types.workspace = true
 malachitebft-reth-cli.workspace = true
+malachitebft-reth-engine.workspace = true
 malachitebft-app-channel.workspace = true
 malachitebft-proto.workspace = true
+
+alloy-consensus = { workspace = true }
+alloy-rpc-types-eth = { workspace = true }
+alloy-rpc-types-engine = { workspace = true }
+ethereum_ssz = "0.8"
 
 hex.workspace = true
 async-trait.workspace = true
@@ -24,8 +30,11 @@ color-eyre.workspace = true
 prost.workspace = true
 rand.workspace = true
 redb.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 sha3.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+url.workspace = true
+

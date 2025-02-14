@@ -1,27 +1,41 @@
+use bytes::Bytes;
 use color_eyre::eyre::{self, eyre};
-use std::time::Duration;
-use tracing::{error, info};
+use ssz::{Decode, Encode};
+use tracing::{debug, error, info};
 
+use crate::state::{decode_value, State};
+
+use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
 use malachitebft_app_channel::app::types::sync::RawDecidedValue;
-use malachitebft_app_channel::app::types::ProposedValue;
+use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
 use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
+use malachitebft_reth_engine::engine::Engine;
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::TestContext;
 
-use crate::state::{decode_value, State};
-
-pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyre::Result<()> {
+pub async fn run(
+    state: &mut State,
+    channels: &mut Channels<TestContext>,
+    engine: Engine,
+) -> eyre::Result<()> {
     while let Some(msg) = channels.consensus.recv().await {
         match msg {
             // The first message to handle is the `ConsensusReady` message, signaling to the app
             // that Malachite is ready to start consensus
             AppMsg::ConsensusReady { reply } => {
-                info!("Consensus is ready");
+                info!("🟢 Consensus is ready");
 
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
+                // Check compatibility with execution client
+                engine.check_capabilities().await?;
+
+                // Get the latest block from the execution engine
+                let latest_block = engine.api.get_block_by_number("latest").await?.unwrap();
+                debug!("👉 latest_block: {:?}", latest_block);
+                state.head_block_hash = Some(latest_block.block_hash);
 
                 // We can simply respond by telling the engine to start consensus
                 // at the current height, which is initially 1
@@ -43,7 +57,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 round,
                 proposer,
             } => {
-                info!(%height, %round, %proposer, "Started round");
+                info!(%height, %round, %proposer, "🟢 Started round");
 
                 // We can use that opportunity to update our internal state
                 state.current_height = height;
@@ -51,7 +65,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 state.current_proposer = Some(proposer);
             }
 
-            // At some point, we may end up being the proposer for that round, and the engine
+            // At some point, we may end up being the proposer for that round, and the consensus engine
             // will then ask us for a value to propose to the other validators.
             AppMsg::GetValue {
                 height,
@@ -63,15 +77,27 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 // If we were let's say reaping as many txes from a mempool and executing them,
                 // then we would need to respect the timeout and stop at a certain point.
 
-                info!(%height, %round, "Consensus is requesting a value to propose");
+                info!(%height, %round, "🟢 Consensus is requesting a value to propose");
 
-                // We need to create a new value to propose and send it back to consensus.
-                // Get block data
-                let block_bytes = state.make_block();
+                // We need to ask the execution engine for a new value to
+                // propose. Then we send it back to consensus.
+                let head_block_hash = state.head_block_hash.expect("Head block hash is not set");
+                let execution_payload = engine.generate_block(head_block_hash).await?;
+                debug!(
+                    "🌈 Got execution payload (block) from execution engine: {:?}",
+                    execution_payload
+                );
 
-                let proposal = state
-                    .propose_value(height, round, block_bytes.clone())
-                    .await?;
+                // Store block in state and propagate to peers.
+                let bytes = Bytes::from(execution_payload.as_ssz_bytes());
+
+                // Prepare block proposal.
+                let proposal: LocallyProposedValue<TestContext> =
+                    state.propose_value(height, round, bytes.clone()).await?;
+
+                // When the node is not the proposer, store the block data,
+                // which will be passed to the execution client (EL) on commit.
+                state.store_undecided_proposal_data(bytes.clone()).await?;
 
                 // Send it to consensus
                 if reply.send(proposal.clone()).is_err() {
@@ -80,14 +106,14 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // Now what's left to do is to break down the value to propose into parts,
                 // and send those parts over the network to our peers, for them to re-assemble the full value.
-                for stream_message in state.stream_proposal(proposal, block_bytes) {
+                for stream_message in state.stream_proposal(proposal, bytes) {
                     info!(%height, %round, "Streaming proposal part: {stream_message:?}");
-
                     channels
                         .network
                         .send(NetworkMsg::PublishProposalPart(stream_message))
                         .await?;
                 }
+                debug!(%height, %round, "✅ Proposal sent");
             }
 
             // On the receiving end of these proposal parts (ie. when we are not the proposer),
@@ -107,6 +133,9 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 );
 
                 let proposed_value = state.received_proposal_part(from, part).await?;
+                if let Some(proposed_value) = proposed_value.clone() {
+                    debug!("✅ Received complete proposal: {:?}", proposed_value);
+                }
 
                 if reply.send(proposed_value).is_err() {
                     error!("Failed to send ReceivedProposalPart reply");
@@ -121,7 +150,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // send back the validator set found in our genesis state.
             AppMsg::GetValidatorSet { height: _, reply } => {
                 if reply.send(state.get_validator_set().clone()).is_err() {
-                    error!("Failed to send GetValidatorSet reply");
+                    error!("🔴 Failed to send GetValidatorSet reply");
                 }
             }
 
@@ -136,14 +165,48 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 info!(
                     height = %certificate.height, round = %certificate.round,
                     value = %certificate.value_id,
-                    "Consensus has decided on value"
+                    "🟢 Consensus has decided on value"
+                );
+
+                let block_bytes = state
+                    .get_block_data(certificate.height, certificate.round)
+                    .await
+                    .expect("certificate should have associated block data");
+
+                let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes).unwrap();
+                let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
+                let new_block_hash = execution_payload.payload_inner.payload_inner.block_hash;
+                assert_eq!(state.head_block_hash, Some(parent_block_hash));
+
+                // If the node is not the proposer, provide the received block
+                // to the execution client (EL).
+                if !state.is_current_proposer() {
+                    let payload_status = engine.notify_new_block(execution_payload).await?;
+                    if payload_status.status.is_invalid() {
+                        return Err(eyre!("Invalid payload status: {}", payload_status.status));
+                    }
+                    debug!(
+                        "💡 New block added at height {} with hash: {}",
+                        certificate.height, new_block_hash
+                    );
+                }
+
+                // Notify the execution client (EL) of the new block.
+                // Update the execution head state to this block.
+                let latest_valid_hash = engine.set_latest_forkchoice_state(new_block_hash).await?;
+                debug!(
+                    "🚀 Forkchoice updated to height {} with block hash: {}, latest_valid_hash: {}",
+                    certificate.height, new_block_hash, latest_valid_hash
                 );
 
                 // When that happens, we store the decided value in our store
                 state.commit(certificate).await?;
 
+                // Update the head block hash
+                state.head_block_hash = Some(new_block_hash);
+
                 // Pause briefly before starting next height, just to make following the logs easier
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                // tokio::time::sleep(Duration::from_secs(1)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply
@@ -172,7 +235,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
                 value_bytes,
                 reply,
             } => {
-                info!(%height, %round, "Processing synced value");
+                info!(%height, %round, "🟢 Processing synced value");
 
                 let value = decode_value(value_bytes);
 
@@ -198,6 +261,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             // that was decided at some lower height. In that case, we fetch it from our store
             // and send it to consensus.
             AppMsg::GetDecidedValue { height, reply } => {
+                info!(%height, "🟢 GetDecidedValue");
                 let decided_value = state.get_decided_value(height).await;
 
                 let raw_decided_value = decided_value.map(|decided_value| RawDecidedValue {
@@ -221,30 +285,30 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             }
 
             AppMsg::RestreamProposal { .. } => {
-                error!("RestreamProposal not implemented");
+                error!("🔴 RestreamProposal not implemented");
             }
 
             AppMsg::ExtendVote { reply, .. } => {
                 if reply.send(None).is_err() {
-                    error!("Failed to send ExtendVote reply");
+                    error!("🔴 Failed to send ExtendVote reply");
                 }
             }
 
             AppMsg::VerifyVoteExtension { reply, .. } => {
                 if reply.send(Ok(())).is_err() {
-                    error!("Failed to send VerifyVoteExtension reply");
+                    error!("🔴 Failed to send VerifyVoteExtension reply");
                 }
             }
 
             AppMsg::PeerJoined { peer_id } => {
-                info!(%peer_id, "Peer joined our local view of network");
+                info!(%peer_id, "🟢 Peer joined our local view of network");
 
                 // You might want to track connected peers in your state
                 state.peers.insert(peer_id);
             }
 
             AppMsg::PeerLeft { peer_id } => {
-                info!(%peer_id, "Peer left our local view of network");
+                info!(%peer_id, "🔴 Peer left our local view of network");
 
                 // Remove the peer from tracking
                 state.peers.remove(&peer_id);
