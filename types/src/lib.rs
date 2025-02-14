@@ -3,6 +3,7 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 mod address;
+mod aliases;
 mod context;
 mod genesis;
 mod height;
@@ -19,6 +20,7 @@ pub mod proto;
 pub mod utils;
 
 pub use crate::address::*;
+pub use crate::aliases::*;
 pub use crate::context::*;
 pub use crate::genesis::*;
 pub use crate::height::*;

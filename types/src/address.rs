@@ -1,6 +1,7 @@
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
+use alloy_primitives::Address as AlloyAddress;
 use malachitebft_proto::{Error as ProtoError, Protobuf};
 
 use crate::signing::PublicKey;
@@ -9,11 +10,12 @@ use crate::{proto, Hashable};
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Address(
-    #[serde(
-        serialize_with = "hex::serde::serialize_upper",
-        deserialize_with = "hex::serde::deserialize"
-    )]
-    [u8; Self::LENGTH],
+    AlloyAddress,
+    // #[serde(
+    //     serialize_with = "hex::serde::serialize_upper",
+    //     deserialize_with = "hex::serde::deserialize"
+    // )]
+    // [u8; Self::LENGTH],
 );
 
 impl Address {
@@ -21,7 +23,7 @@ impl Address {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn new(value: [u8; Self::LENGTH]) -> Self {
-        Self(value)
+        Self(AlloyAddress::new(value))
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -29,10 +31,20 @@ impl Address {
         let hash = public_key.hash();
         let mut address = [0; Self::LENGTH];
         address.copy_from_slice(&hash[..Self::LENGTH]);
-        Self(address)
+        Self(AlloyAddress::new(address))
     }
 
     pub fn into_inner(self) -> [u8; Self::LENGTH] {
+        self.0.into()
+    }
+
+    /// Creates a new [`FixedBytes`] where all bytes are set to `byte`.
+    #[inline]
+    pub const fn repeat_byte(byte: u8) -> Self {
+        Self(AlloyAddress::repeat_byte(byte))
+    }
+
+    pub fn to_alloy_address(&self) -> alloy_primitives::Address {
         self.0
     }
 }
@@ -70,12 +82,24 @@ impl Protobuf for Address {
 
         let mut address = [0; Self::LENGTH];
         address.copy_from_slice(&proto.value);
-        Ok(Self(address))
+        Ok(Self(AlloyAddress::new(address)))
     }
 
     fn to_proto(&self) -> Result<Self::Proto, ProtoError> {
         Ok(proto::Address {
             value: self.0.to_vec().into(),
         })
+    }
+}
+
+impl From<AlloyAddress> for Address {
+    fn from(addr: AlloyAddress) -> Self {
+        Self::new(addr.into())
+    }
+}
+
+impl Into<AlloyAddress> for Address {
+    fn into(self) -> AlloyAddress {
+        self.0
     }
 }
