@@ -1,6 +1,6 @@
 services:
   reth0:
-    image: ghcr.io/paradigmxyz/reth:latest
+    image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth0
     volumes:
       - ./rethdata/0:/root/.local/share/reth/mainnet
@@ -35,7 +35,7 @@ services:
       # - "--port=303"
 
   reth1:
-    image: ghcr.io/paradigmxyz/reth:latest
+    image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth1
     volumes:
       - ./rethdata/1:/root/.local/share/reth/mainnet
@@ -68,7 +68,7 @@ services:
       - "--identity=reth1"
 
   reth2:
-    image: ghcr.io/paradigmxyz/reth:latest
+    image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth2
     volumes:
       - ./rethdata/2:/root/.local/share/reth/mainnet
