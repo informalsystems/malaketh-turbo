@@ -8,6 +8,7 @@ use color_eyre::eyre;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use sha3::Digest;
+use tokio::time::Instant;
 use tracing::{debug, error, info};
 
 use malachitebft_app_channel::app::streaming::{StreamContent, StreamId, StreamMessage};
@@ -51,6 +52,10 @@ pub struct State {
 
     // TODO: is this value already available somewhere in the state?
     pub head_block_hash: Option<BlockHash>,
+
+    pub txs_count: u64,
+    pub chain_bytes: u64,
+    pub start_time: Instant,
 }
 
 /// Represents errors that can occur during the verification of a proposal's signature.
@@ -103,6 +108,10 @@ impl State {
             peers: HashSet::new(),
 
             head_block_hash: None,
+
+            txs_count: 0,
+            chain_bytes: 0,
+            start_time: Instant::now(),
         }
     }
 

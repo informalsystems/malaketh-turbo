@@ -26,7 +26,7 @@ pub async fn run(
             // The first message to handle is the `ConsensusReady` message, signaling to the app
             // that Malachite is ready to start consensus
             AppMsg::ConsensusReady { reply } => {
-                info!("🟢 Consensus is ready");
+                info!("🟢🟢 Consensus is ready");
 
                 // Node start-up: https://hackmd.io/@danielrachi/engine_api#Node-startup
                 // Check compatibility with execution client
@@ -57,7 +57,7 @@ pub async fn run(
                 round,
                 proposer,
             } => {
-                info!(%height, %round, %proposer, "🟢 Started round");
+                info!(%height, %round, %proposer, "🟢🟢 Started round");
 
                 // We can use that opportunity to update our internal state
                 state.current_height = height;
@@ -77,7 +77,7 @@ pub async fn run(
                 // If we were let's say reaping as many txes from a mempool and executing them,
                 // then we would need to respect the timeout and stop at a certain point.
 
-                info!(%height, %round, "🟢 Consensus is requesting a value to propose");
+                info!(%height, %round, "🟢🟢 Consensus is requesting a value to propose");
 
                 // We need to ask the execution engine for a new value to
                 // propose. Then we send it back to consensus.
@@ -88,8 +88,18 @@ pub async fn run(
                     execution_payload
                 );
 
+                let tx_count = execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+                    .len();
+                if tx_count > 0 {
+                    debug!("🦄 Block contains {tx_count} transactions");
+                }
+
                 // Store block in state and propagate to peers.
                 let bytes = Bytes::from(execution_payload.as_ssz_bytes());
+                debug!("🎁 block size: {:?}, height: {}", bytes.len(), height);
 
                 // Prepare block proposal.
                 let proposal: LocallyProposedValue<TestContext> =
@@ -165,18 +175,42 @@ pub async fn run(
                 info!(
                     height = %certificate.height, round = %certificate.round,
                     value = %certificate.value_id,
-                    "🟢 Consensus has decided on value"
+                    "🟢🟢 Consensus has decided on value"
                 );
 
                 let block_bytes = state
                     .get_block_data(certificate.height, certificate.round)
                     .await
                     .expect("certificate should have associated block data");
+                debug!(
+                    "🎁 block size: {:?}, height: {}",
+                    block_bytes.len(),
+                    certificate.height
+                );
 
+                // Decode bytes into execution payload (a block)
                 let execution_payload = ExecutionPayloadV3::from_ssz_bytes(&block_bytes).unwrap();
                 let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
                 let new_block_hash = execution_payload.payload_inner.payload_inner.block_hash;
                 assert_eq!(state.head_block_hash, Some(parent_block_hash));
+
+                // Log stats
+                let tx_count = execution_payload
+                    .payload_inner
+                    .payload_inner
+                    .transactions
+                    .len();
+                state.txs_count += tx_count as u64;
+                state.chain_bytes += block_bytes.len() as u64;
+                let elapsed_time = state.start_time.elapsed();
+                info!(
+                    "👉 stats at height {}: #txs={}, txs/s={:.2}, chain_bytes={}, bytes/s={:.2}",
+                    certificate.height,
+                    state.txs_count,
+                    state.txs_count as f64 / elapsed_time.as_secs_f64(),
+                    state.chain_bytes,
+                    state.chain_bytes as f64 / elapsed_time.as_secs_f64(),
+                );
 
                 // If the node is not the proposer, provide the received block
                 // to the execution client (EL).
@@ -206,7 +240,7 @@ pub async fn run(
                 state.head_block_hash = Some(new_block_hash);
 
                 // Pause briefly before starting next height, just to make following the logs easier
-                // tokio::time::sleep(Duration::from_secs(1)).await;
+                // tokio::time::sleep(Duration::from_millis(500)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply
@@ -235,7 +269,7 @@ pub async fn run(
                 value_bytes,
                 reply,
             } => {
-                info!(%height, %round, "🟢 Processing synced value");
+                info!(%height, %round, "🟢🟢 Processing synced value");
 
                 let value = decode_value(value_bytes);
 
@@ -261,7 +295,7 @@ pub async fn run(
             // that was decided at some lower height. In that case, we fetch it from our store
             // and send it to consensus.
             AppMsg::GetDecidedValue { height, reply } => {
-                info!(%height, "🟢 GetDecidedValue");
+                info!(%height, "🟢🟢 GetDecidedValue");
                 let decided_value = state.get_decided_value(height).await;
 
                 let raw_decided_value = decided_value.map(|decided_value| RawDecidedValue {
@@ -301,7 +335,7 @@ pub async fn run(
             }
 
             AppMsg::PeerJoined { peer_id } => {
-                info!(%peer_id, "🟢 Peer joined our local view of network");
+                info!(%peer_id, "🟢🟢 Peer joined our local view of network");
 
                 // You might want to track connected peers in your state
                 state.peers.insert(peer_id);
