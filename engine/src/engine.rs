@@ -37,15 +37,24 @@ impl Engine {
             payload_status,
             payload_id,
         } = self.api.forkchoice_updated(head_block_hash, None).await?;
+        assert!(payload_id.is_none(), "Payload ID should be None!");
         match payload_status.status {
-            PayloadStatusEnum::Valid => {
-                assert!(payload_id.is_none(), "Payload ID should be None!");
-                return Ok(payload_status.latest_valid_hash.unwrap());
+            PayloadStatusEnum::Valid => Ok(payload_status.latest_valid_hash.unwrap()),
+            PayloadStatusEnum::Syncing if payload_status.latest_valid_hash.is_none() => {
+                // From the Engine API spec:
+                // 8. Client software MUST respond to this method call in the
+                //    following way:
+                //   * {payloadStatus: {status: SYNCING, latestValidHash: null,
+                //   * validationError: null}, payloadId: null} if
+                //     forkchoiceState.headBlockHash references an unknown
+                //     payload or a payload that can't be validated because
+                //     requisite data for the validation is missing
+                Err(eyre::eyre!(
+                    "headBlockHash={:?} references an unknown payload or a payload that can't be validated",
+                    head_block_hash
+                ))
             }
-            // TODO: Handle other statuses.
-            status => {
-                return Err(eyre::eyre!("Invalid payload status: {}", status));
-            }
+            status => Err(eyre::eyre!("Invalid payload status: {}", status)),
         }
     }
 
@@ -55,6 +64,7 @@ impl Engine {
         // TODO: cache the latest block
         let latest_block = self.api.get_block_by_number("latest").await?.unwrap();
         debug!("👉 latest_block: {:?}", latest_block);
+        assert_eq!(block_hash, latest_block.block_hash);
 
         let payload_attributes = PayloadAttributes {
             // timestamp should be greater than that of forkchoiceState.headBlockHash
