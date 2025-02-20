@@ -3,7 +3,7 @@ services:
     image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth0
     volumes:
-      - ./rethdata/0:/root/.local/share/reth/mainnet
+      - ./rethdata/0:/data/reth/execution-data
       - ./assets:/root/assets/
     ports:
       - "8545:8545"
@@ -17,7 +17,7 @@ services:
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     command:
       - "node"
-      - "-vvvvv"
+      - "-vvv"
       - "-d"
       - "--datadir=/data/reth/execution-data"
       - "--chain=/root/assets/genesis.json"
@@ -30,27 +30,27 @@ services:
       - "--authrpc.port=8551"
       - "--authrpc.jwtsecret=/root/assets/jwtsecret"
       - "--metrics=0.0.0.0:9001"
-      - "--identity=reth0"
-      # - "--discovery.port=30303"
-      # - "--port=303"
-
+      - "--discovery.port=30303"
+      - "--port=30303"
   reth1:
     image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth1
     volumes:
-      - ./rethdata/1:/root/.local/share/reth/mainnet
+      - ./rethdata/1:/data/reth/execution-data
       - ./assets:/root/assets/
     ports:
       - "18545:8545"
       - "18551:8551"
       - "9101:9001"
+      - "40303:40303"
+      - "40303:40303/udp"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     command:
       - "node"
-      - "-vvvvv"
+      - "-vvv"
       - "-d"
       - "--datadir=/data/reth/execution-data"
       - "--chain=/root/assets/genesis.json"
@@ -63,25 +63,27 @@ services:
       - "--authrpc.port=8551"
       - "--authrpc.jwtsecret=/root/assets/jwtsecret"
       - "--metrics=0.0.0.0:9001"
-      - "--identity=reth1"
-
+      - "--discovery.port=40303"
+      - "--port=40303"
   reth2:
     image: ghcr.io/paradigmxyz/reth:v1.1.5
     container_name: reth2
     volumes:
-      - ./rethdata/2:/root/.local/share/reth/mainnet
+      - ./rethdata/2:/data/reth/execution-data
       - ./assets:/root/assets/
     ports:
       - "28545:8545"
       - "28551:8551"
       - "9102:9001"
+      - "50303:50303"
+      - "50303:50303/udp"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     command:
       - "node"
-      - "-vvvvv"
+      - "-vvv"
       - "-d"
       - "--datadir=/data/reth/execution-data"
       - "--chain=/root/assets/genesis.json"
@@ -94,6 +96,46 @@ services:
       - "--authrpc.port=8551"
       - "--authrpc.jwtsecret=/root/assets/jwtsecret"
       - "--metrics=0.0.0.0:9001"
+      - "--discovery.port=50303"
+      - "--port=50303"
+  tx-fuzz:
+    image: ethpandaops/tx-fuzz:master
+    depends_on:
+      - reth0
+      - reth1
+      - reth2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - "spam"
+      - "--rpc=http://reth0:8545"
+      - "--sk=ab63b23eb7941c1251757e24b3d2350d2bc05c3c388d06f8fe6feafefb1e8c70"
+  spamoor:
+    image: ethpandaops/spamoor:latest
+    depends_on:
+      - reth0
+      - reth1
+      - reth2
+    command:
+      - "eoatx"
+      - "-v"
+      - "--throughput=500"
+      - "--rpchost=http://reth0:8545"
+      - "--privkey=ab63b23eb7941c1251757e24b3d2350d2bc05c3c388d06f8fe6feafefb1e8c70"
+  spamoor_blob:
+    image: ethpandaops/spamoor:latest
+    depends_on:
+      - reth0
+      - reth1
+      - reth2
+    command:
+      - "blob-combined"
+      - "-v"
+      - "--throughput=3"
+      - "--max-pending=6"
+      - "--max-wallets=20"
+      - "--rpchost=http://reth0:8545"
+      - "--privkey=ab63b23eb7941c1251757e24b3d2350d2bc05c3c388d06f8fe6feafefb1e8c70"
   prometheus:
     image: prom/prometheus
     #image: prom/prometheus:v2.42.0 # Debian 12 seems to use a fairly old version of prometheus
