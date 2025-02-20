@@ -103,10 +103,11 @@ impl Engine {
     pub async fn notify_new_block(
         &self,
         execution_payload: ExecutionPayloadV3,
+        versioned_hashes: Vec<B256>,
     ) -> eyre::Result<PayloadStatus> {
         let parent_block_hash = execution_payload.payload_inner.payload_inner.parent_hash;
         self.api
-            .new_payload(execution_payload, parent_block_hash)
+            .new_payload(execution_payload, versioned_hashes, parent_block_hash)
             .await
     }
 

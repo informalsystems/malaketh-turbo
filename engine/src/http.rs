@@ -220,10 +220,10 @@ impl HttpJsonRpc {
     pub async fn new_payload(
         &self,
         execution_payload: ExecutionPayloadV3,
+        versioned_hashes: Vec<B256>,
         parent_block_hash: BlockHash,
     ) -> eyre::Result<PayloadStatus> {
         let payload = JsonExecutionPayloadV3::from(execution_payload);
-        let versioned_hashes: Vec<B256> = vec![];
         let params = json!([payload, versioned_hashes, parent_block_hash]);
         self.rpc_request(ENGINE_NEW_PAYLOAD_V3, params, ENGINE_NEW_PAYLOAD_TIMEOUT)
             .await

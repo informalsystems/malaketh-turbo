@@ -5,6 +5,7 @@ use tracing::{debug, error, info};
 
 use crate::state::{decode_value, State};
 
+use alloy_consensus::Transaction;
 use alloy_rpc_types_engine::ExecutionPayloadV3;
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
@@ -14,7 +15,7 @@ use malachitebft_app_channel::app::types::{LocallyProposedValue, ProposedValue};
 use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
 use malachitebft_reth_engine::engine::Engine;
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
-use malachitebft_reth_types::TestContext;
+use malachitebft_reth_types::{Block, TestContext};
 
 pub async fn run(
     state: &mut State,
@@ -212,10 +213,21 @@ pub async fn run(
                     state.chain_bytes as f64 / elapsed_time.as_secs_f64(),
                 );
 
+                // Collect hashes from blob transactions
+                let block: Block = execution_payload.clone().try_into_block().unwrap();
+                let versioned_hashes = block
+                    .body
+                    .transactions
+                    .iter()
+                    .flat_map(|tx| tx.blob_versioned_hashes().unwrap_or_default().to_vec())
+                    .collect::<Vec<_>>();
+
                 // If the node is not the proposer, provide the received block
                 // to the execution client (EL).
                 if !state.is_current_proposer() {
-                    let payload_status = engine.notify_new_block(execution_payload).await?;
+                    let payload_status = engine
+                        .notify_new_block(execution_payload, versioned_hashes)
+                        .await?;
                     if payload_status.status.is_invalid() {
                         return Err(eyre!("Invalid payload status: {}", payload_status.status));
                     }
