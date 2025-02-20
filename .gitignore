@@ -1,2 +1,4 @@
 /target
 /nodes
+monitoring/data-grafana/
+monitoring/data-prometheus/

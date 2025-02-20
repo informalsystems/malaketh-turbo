@@ -6,9 +6,9 @@ services:
       - ./rethdata/0:/root/.local/share/reth/mainnet
       - ./assets:/root/assets/
     ports:
-      - "9001:9001"
       - "8545:8545"
       - "8551:8551"
+      - "9100:9001"
       - "30303:30303"
       - "30303:30303/udp"
     extra_hosts:
@@ -41,11 +41,9 @@ services:
       - ./rethdata/1:/root/.local/share/reth/mainnet
       - ./assets:/root/assets/
     ports:
-      - "19001:9001"
       - "18545:8545"
       - "18551:8551"
-      - "40303:30303"
-      - "40303:30303/udp"
+      - "9101:9001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -74,11 +72,9 @@ services:
       - ./rethdata/2:/root/.local/share/reth/mainnet
       - ./assets:/root/assets/
     ports:
-      - "29001:9001"
       - "28545:8545"
       - "28551:8551"
-      - "50303:30303"
-      - "50303:30303/udp"
+      - "9102:9001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -98,4 +94,49 @@ services:
       - "--authrpc.port=8551"
       - "--authrpc.jwtsecret=/root/assets/jwtsecret"
       - "--metrics=0.0.0.0:9001"
-      - "--identity=reth2"
+  prometheus:
+    image: prom/prometheus
+    #image: prom/prometheus:v2.42.0 # Debian 12 seems to use a fairly old version of prometheus
+    ports:
+      - 127.0.0.1:9090:9090
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/data-prometheus:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  #    command:
+  #      - "--config.file=/etc/prometheus/prometheus.yml"
+  #      - "--storage.tsdb.path=/prometheus"
+  #      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+  #      - "--web.console.templates=/usr/share/prometheus/consoles"
+  #      - "--no-storage.tsdb.wal-compression"
+  #      - "--storage.tsdb.retention.time=1y"
+  #      - "--storage.tsdb.no-lockfile"
+  grafana:
+    image: grafana/grafana-oss
+    # if you are running as root then set it to 0
+    # else find the right id with the id -u command
+    user: '501'
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - ./monitoring/data-grafana:/var/lib/grafana
+      - ./monitoring/config-grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/config-grafana/grafana.ini:/etc/grafana/grafana.ini
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GF_LOG_LEVEL: info
+      GF_ANALYTICS_ENABLED: false
+      GF_ANALYTICS_REPORTING_ENABLED: false
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false
+      GF_ANALYTICS_CHECK_FOR_UPDATES: false
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: false
+      GF_SECURITY_DISABLE_GRAVATAR: true
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards-data/default.json
+      GF_USERS_DEFAULT_THEME: system
+      GF_USERS_EDITORS_CAN_ADMIN: true
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_BASIC_ENABLED: false
+      GF_NEWS_NEWS_FEED_ENABLED: false
