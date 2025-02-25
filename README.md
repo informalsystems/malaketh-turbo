@@ -1,3 +1,5 @@
+# 42,000tps with Reth and Malachite
+
 At Informal, we’ve been exploring how to integrate Malachite, our cutting-edge Tendermint-based consensus protocol with Reth, one of the leading Ethereum execution clients. Both codebases are built in Rust, so integration is pretty natural.
 
 Malachite provides consensus, and so far has been benchmarked at a throughput of 13.5MB/s in a 100 validator network (although improvements far beyond this are under development). The concept is pretty simple. There is a validator set which controls the network. Every block, one of the validators is chosen to act as the proposer. This proposer creates a block and streams it to the rest of the validators in the network. Once a validator receives and reconstructs the block, they follow the Tendermint consensus protocol to vote on their approval of the block and propagate the vote to the other validators and clients. When a client or validator sees that a given block has received votes from at least 2/3s of the validator set, the block is considered final.
