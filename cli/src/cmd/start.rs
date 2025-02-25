@@ -11,13 +11,21 @@ use crate::metrics;
 pub struct StartCmd {
     #[clap(long)]
     pub start_height: Option<u64>,
+
+    /// Enable the Ethereum JSON-RPC server
+    #[clap(long)]
+    pub enable_rpc: bool,
 }
 
 impl StartCmd {
     pub async fn run(&self, node: impl Node, metrics: Option<MetricsConfig>) -> eyre::Result<()> {
         info!("Node is starting...");
 
-        start(node, metrics).await?;
+        if self.enable_rpc {
+            info!("Starting with RPC server enabled");
+        }
+
+        start(node, metrics, self.enable_rpc).await?;
 
         info!("Node has stopped");
 
@@ -26,7 +34,7 @@ impl StartCmd {
 }
 
 /// start command to run a node.
-pub async fn start(node: impl Node, metrics: Option<MetricsConfig>) -> eyre::Result<()> {
+pub async fn start(node: impl Node, metrics: Option<MetricsConfig>, enable_rpc: bool) -> eyre::Result<()> {
     // Enable Prometheus
     if let Some(metrics) = metrics {
         if metrics.enabled {

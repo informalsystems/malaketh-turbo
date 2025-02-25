@@ -37,6 +37,7 @@ pub struct App {
     pub genesis_file: PathBuf,
     pub private_key_file: PathBuf,
     pub start_height: Option<Height>,
+    pub enable_rpc: bool,
 }
 
 pub struct Handle {
@@ -159,7 +160,15 @@ impl Node for App {
 
         let store = Store::open(self.get_home_dir().join("store.db"), metrics)?;
         let start_height = self.start_height.unwrap_or_default();
-        let mut state = State::new(genesis, ctx, signing_provider, address, start_height, store);
+        let mut state = State::new(
+            genesis,
+            ctx,
+            signing_provider,
+            address,
+            start_height,
+            store,
+            self.enable_rpc,
+        );
 
         let app_handle = tokio::spawn(async move {
             if let Err(e) = crate::app::run(&mut state, &mut channels).await {

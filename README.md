@@ -51,6 +51,20 @@ $ tail -f nodes/0/logs/node.log
 
 Press `Ctrl-C` to stop all the nodes.
 
+Generate EVM blocks to propose
+
 ```
-rm -rf ./nodes; cargo build; cargo run -- testnet --nodes 3 --home nodes; bash scripts/spawn.bash --nodes 3 --home nodes
+cargo run --bin utils -- generate
+```
+
+Run an EVM network with an RPC
+
+```
+rm -rf ./nodes; cargo build; cargo run --bin malachitebft-reth-app -- testnet --nodes 3 --home nodes; bash scripts/spawn.bash --nodes 3 --home nodes --rpc-node 0
+```
+
+Script to verify functioning of EVM network by parsing logs
+
+```
+cargo run --bin utils -- verify
 ```

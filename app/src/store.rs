@@ -3,6 +3,7 @@ use std::ops::RangeBounds;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
+use std::path::PathBuf;
 
 use bytes::Bytes;
 use prost::Message;
@@ -419,14 +420,23 @@ impl Db {
 #[derive(Clone)]
 pub struct Store {
     db: Arc<Db>,
+    path: PathBuf,
 }
 
 impl Store {
     pub fn open(path: impl AsRef<Path>, metrics: DbMetrics) -> Result<Self, StoreError> {
-        let db = Db::new(path, metrics)?;
+        let path_buf = path.as_ref().to_path_buf();
+        let db = Db::new(&path_buf, metrics)?;
         db.create_tables()?;
 
-        Ok(Self { db: Arc::new(db) })
+        Ok(Self { 
+            db: Arc::new(db),
+            path: path_buf,
+        })
+    }
+
+    pub fn get_path(&self) -> &PathBuf {
+        &self.path
     }
 
     pub async fn min_decided_value_height(&self) -> Option<Height> {

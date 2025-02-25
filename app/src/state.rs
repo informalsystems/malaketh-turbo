@@ -2,6 +2,9 @@
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
 
 use std::collections::HashSet;
+use std::io::{BufReader, Read};
+use std::fs::File;
+use std::mem::size_of;
 
 use bytes::Bytes;
 use color_eyre::eyre;
@@ -19,15 +22,88 @@ use malachitebft_reth_types::{
     Address, Ed25519Provider, Genesis, Height, ProposalData, ProposalFin, ProposalInit,
     ProposalPart, TestContext, ValidatorSet, Value,
 };
+use alloy_genesis::Genesis as EthGenesis;
 
 use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
+
+
+use reth::{
+    api::NodeTypesWithDBAdapter,
+    beacon_consensus::EthBeaconConsensus,
+    providers::{
+        providers::{BlockchainProvider, StaticFileProvider},
+        ProviderFactory,
+    },
+    rpc::eth::EthApi,
+    utils::open_db_read_only,
+};
+
+use reth_node_ethereum::{
+    node::EthereumEngineValidator, EthEvmConfig, EthExecutorProvider, EthereumNode,
+};
+
+use reth::rpc::builder::{
+    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig, RpcServerHandle,
+};
+
+use reth::tasks::TokioTaskExecutor;
+
+use alloy_primitives::{Address as EthAddress, B256, Bloom, FixedBytes, U256, TxKind};
+use alloy_rpc_types_engine::ExecutionPayloadV1;
+use eyre::Result;
+use reth_primitives::{Block, BlockBody, Header, RecoveredBlock, Transaction, TransactionSigned};
+use alloy_consensus::{TxEip1559, BlockHeader, SignableTransaction};
+use reth_provider::{
+    BlockWriter, AccountReader, StateProviderFactory, DatabaseProviderFactory,
+};
+use reth_revm::database::StateProviderDatabase;
+use reth_chainspec::{ChainSpecBuilder, ChainSpec};
+use reth_evm::execute::{BlockExecutorProvider, Executor, ExecutionOutcome};
+use reth_trie::{HashedPostStateSorted, updates::TrieUpdates};
+use std::{sync::Arc, str::FromStr, collections::BTreeMap};
+use serde_json;
+use reth_db_common::init::init_genesis;
+use alloy_signer_local::{coins_bip39::English, MnemonicBuilder, LocalSigner};
+use alloy_signer::Signer;
+use k256::ecdsa::SigningKey;
+use tokio::runtime::Runtime;
+use reth_db::{mdbx::DatabaseArguments, DatabaseEnv};
+use std::path::PathBuf;
+use std::io::{BufWriter, Write};
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+use reth_primitives_traits::transaction::signed::SignedTransaction;
+use std::time::Instant;
+// use reth_node_core::{
+//     consensus::beacon::BeaconConsensus as EthBeaconConsensus,
+//     eth::EthEvmConfig,
+//     rpc::{
+//         eth::EthApi,
+//         builder::{RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig},
+//     },
+//     task::TokioTaskExecutor,
+// };
+use futures::future;
+use reqwest::Client;
+use serde_json::{json};
 
 /// Size of randomly generated blocks in bytes
 const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
 
 /// Size of chunks in which the data is split for streaming
 const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
+
+/// Path to the file containing the blocks
+const BLOCKS_FILE: &str = "./data/blocks.dat";
+
+/// Path to the file containing the genesis
+const ETH_GENESIS_PATH: &str = "./data/genesis.json";
+
+/// Path to the database
+const DB_PATH: &str = "./data/db";
+
+use crate::eth::{BlockExecutor, BlockProposer};
 
 /// Represents the internal state of the application node
 /// Contains information about current height, round, proposals and blocks
@@ -41,6 +117,10 @@ pub struct State {
     stream_nonce: u32,
     streams_map: PartStreamsMap,
     rng: StdRng,
+    block_proposer: BlockProposer,
+    eth_genesis: EthGenesis,
+    block_executor: BlockExecutor,
+    rpc_server: Option<RpcServerHandle>,
 
     pub current_height: Height,
     pub current_round: Round,
@@ -82,7 +162,42 @@ impl State {
         address: Address,
         height: Height,
         store: Store,
+        enable_rpc: bool,
     ) -> Self {
+        // Get the node's home directory from the store path
+        let store_path = store.get_path();
+        let node_dir = store_path.parent().unwrap();
+        let db_path = node_dir.join("eth_db");
+        
+        // Extract node index from the directory name
+        let node_index = node_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.parse::<usize>().ok())
+            .expect("Node directory should be a number");
+        
+        let blocks_file = format!("./data/blocks-{}", node_index);
+        
+        let eth_genesis_json = std::fs::read_to_string(ETH_GENESIS_PATH).unwrap();
+        let eth_genesis: EthGenesis = serde_json::from_str(&eth_genesis_json).unwrap();
+        
+        let block_executor = BlockExecutor::new(db_path, eth_genesis.clone()).unwrap();
+        let rpc_server = if enable_rpc {
+            // Start RPC server synchronously since we're in an async context
+            match futures::executor::block_on(block_executor.start_server()) {
+                Ok(handle) => {
+                    info!("RPC server started successfully");
+                    Some(handle)
+                }
+                Err(e) => {
+                    error!("Failed to start RPC server: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             genesis,
             ctx,
@@ -96,7 +211,15 @@ impl State {
             streams_map: PartStreamsMap::new(),
             rng: StdRng::seed_from_u64(seed_from_address(&address)),
             peers: HashSet::new(),
+            block_proposer: BlockProposer::new(&blocks_file).unwrap(),
+            block_executor,
+            eth_genesis,
+            rpc_server,
         }
+    }
+
+    pub fn make_block(&mut self) -> eyre::Result<Bytes> {
+        self.block_proposer.propose_block(self.current_height.as_u64())
     }
 
     /// Returns the earliest height available in the state
@@ -173,15 +296,6 @@ impl State {
         self.store.get_decided_value(height).await.ok().flatten()
     }
 
-    // /// Retrieves a decided block data at the given height
-    // pub async fn get_block_data(&self, height: Height, round: Round) -> Option<Bytes> {
-    //     self.store
-    //         .get_block_data(height, round)
-    //         .await
-    //         .ok()
-    //         .flatten()
-    // }
-
     /// Commits a value with the given certificate, updating internal state
     /// and moving to the next height
     pub async fn commit(
@@ -223,7 +337,7 @@ impl State {
             .get_block_data(certificate.height, certificate.round)
             .await?;
 
-        // Log first 32 bytes of block data with JNT prefix
+        // Log first 32 bytes of block data
         if let Some(data) = &block_data {
             if data.len() >= 32 {
                 info!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
@@ -232,8 +346,15 @@ impl State {
 
         if let Some(data) = block_data {
             self.store
-                .store_decided_block_data(certificate.height, data)
+                .store_decided_block_data(certificate.height, data.clone())
                 .await?;
+
+            // Only execute blocks if this node is running the RPC server
+            if !data.is_empty() && self.rpc_server.is_some() {
+                // Execute the block
+                info!("Starting block execution for height {}", certificate.height);
+                self.block_executor.next_block(&data)?;
+            }
         }
 
         // Prune the store, keep the last 5 heights
@@ -245,38 +366,6 @@ impl State {
         self.current_round = Round::new(0);
 
         Ok(())
-    }
-
-    // /// Retrieves a previously built proposal value for the given height
-    // pub async fn get_previously_built_value(
-    //     &self,
-    //     height: Height,
-    //     round: Round,
-    // ) -> eyre::Result<Option<LocallyProposedValue<TestContext>>> {
-    //     let Some(proposal) = self.store.get_undecided_proposal(height, round).await? else {
-    //         return Ok(None);
-    //     };
-    //
-    //     Ok(Some(LocallyProposedValue::new(
-    //         proposal.height,
-    //         proposal.round,
-    //         proposal.value,
-    //     )))
-    // }
-
-    // /// Make up a new value to propose
-    // /// A real application would have a more complex logic here,
-    // /// typically reaping transactions from a mempool and executing them against its state,
-    // /// before computing the merkle root of the new app state.
-    // fn make_value(&mut self) -> Value {
-    //     let value = self.rng.gen_range(100..=100000);
-    //     Value::new(value)
-    // }
-
-    pub fn make_block(&mut self) -> Bytes {
-        let mut random_bytes = vec![0u8; BLOCK_SIZE];
-        self.rng.fill(&mut random_bytes[..]);
-        Bytes::from(random_bytes)
     }
 
     /// Creates a new proposal value for the given height
@@ -291,7 +380,7 @@ impl State {
         assert_eq!(round, self.current_round);
 
         // We create a new value.
-        let value = Value::new(data);
+        let value = Value::new(data.clone()); // Clone the data since we need it twice
 
         let proposal = ProposedValue {
             height,
@@ -305,6 +394,11 @@ impl State {
         // Insert the new proposal into the undecided proposals.
         self.store
             .store_undecided_proposal(proposal.clone())
+            .await?;
+
+        // Also store the block data
+        self.store
+            .store_undecided_block_data(height, round, data)
             .await?;
 
         Ok(LocallyProposedValue::new(
@@ -435,9 +529,8 @@ impl State {
     }
 }
 
+
 /// Re-assemble a [`ProposedValue`] from its [`ProposalParts`].
-///
-/// This is done by multiplying all the factors in the parts.
 fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext>, Bytes) {
     // Calculate total size and allocate buffer
     let total_size: usize = parts

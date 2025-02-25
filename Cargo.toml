@@ -35,7 +35,7 @@ async-trait        = "0.1.85"
 axum               = "0.7"
 bytes              = { version = "1", default-features = false }
 bytesize           = "1.3"
-clap               = "4.5"
+clap               = { version = "4.4", features = ["derive"] }
 color-eyre         = "0.6"
 config             = { version = "0.14", features = ["toml"], default-features = false }
 derive-where       = "1.2.7"
@@ -58,6 +58,7 @@ toml               = "0.8.19"
 tracing            = "0.1.41"
 tracing-appender   = "0.2.3"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+reqwest            = { version = "0.11", features = ["blocking", "json"] }
 
 [workspace.dependencies.malachitebft-app]
 package = "informalsystems-malachitebft-app"
