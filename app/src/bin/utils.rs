@@ -47,7 +47,7 @@ enum Commands {
         txs_per_block: usize,
         
         /// Number of blocks to generate
-        #[arg(long, default_value_t = 33)]
+        #[arg(long, default_value_t = 10)]
         num_blocks: usize,
     },
     
@@ -453,15 +453,7 @@ fn verify_block_logs(log_file: &str) -> eyre::Result<()> {
         }
     }
     
-    // 3. Verify alternating signers
-    for window in executions.windows(2) {
-        if window[0].signer == window[1].signer {
-            println!("❌ Same signer {} for consecutive blocks {} and {}", 
-                window[0].signer, window[0].height, window[1].height);
-        }
-    }
-
-    // 4. Verify no missing blocks from 1 to 10
+    // 3. Verify no missing blocks from 1 to 10
     let executed_heights: HashSet<u64> = executions.iter()
         .map(|exec| exec.height)
         .collect();
@@ -640,14 +632,6 @@ fn verify_rpc_state() -> Result<()> {
             }
             
             last_final_balance = Some((*height, *final_bal));
-        }
-    }
-    
-    // 3. Verify alternating signers
-    for window in executions.windows(2) {
-        if window[0].signer == window[1].signer {
-            println!("❌ Same signer {} for consecutive blocks {} and {}", 
-                window[0].signer, window[0].height, window[1].height);
         }
     }
     

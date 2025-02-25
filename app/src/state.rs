@@ -2,14 +2,10 @@
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
 
 use std::collections::HashSet;
-use std::io::{BufReader, Read};
-use std::fs::File;
 use std::mem::size_of;
 
 use bytes::Bytes;
 use color_eyre::eyre;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use sha3::Digest;
 use tracing::{debug, error, info};
 
@@ -27,81 +23,16 @@ use alloy_genesis::Genesis as EthGenesis;
 use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
 
+use reth::rpc::builder::RpcServerHandle;
 
-use reth::{
-    api::NodeTypesWithDBAdapter,
-    beacon_consensus::EthBeaconConsensus,
-    providers::{
-        providers::{BlockchainProvider, StaticFileProvider},
-        ProviderFactory,
-    },
-    rpc::eth::EthApi,
-    utils::open_db_read_only,
-};
-
-use reth_node_ethereum::{
-    node::EthereumEngineValidator, EthEvmConfig, EthExecutorProvider, EthereumNode,
-};
-
-use reth::rpc::builder::{
-    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig, RpcServerHandle,
-};
-
-use reth::tasks::TokioTaskExecutor;
-
-use alloy_primitives::{Address as EthAddress, B256, Bloom, FixedBytes, U256, TxKind};
-use alloy_rpc_types_engine::ExecutionPayloadV1;
 use eyre::Result;
-use reth_primitives::{Block, BlockBody, Header, RecoveredBlock, Transaction, TransactionSigned};
-use alloy_consensus::{TxEip1559, BlockHeader, SignableTransaction};
-use reth_provider::{
-    BlockWriter, AccountReader, StateProviderFactory, DatabaseProviderFactory,
-};
-use reth_revm::database::StateProviderDatabase;
-use reth_chainspec::{ChainSpecBuilder, ChainSpec};
-use reth_evm::execute::{BlockExecutorProvider, Executor, ExecutionOutcome};
-use reth_trie::{HashedPostStateSorted, updates::TrieUpdates};
-use std::{sync::Arc, str::FromStr, collections::BTreeMap};
 use serde_json;
-use reth_db_common::init::init_genesis;
-use alloy_signer_local::{coins_bip39::English, MnemonicBuilder, LocalSigner};
-use alloy_signer::Signer;
-use k256::ecdsa::SigningKey;
-use tokio::runtime::Runtime;
-use reth_db::{mdbx::DatabaseArguments, DatabaseEnv};
-use std::path::PathBuf;
-use std::io::{BufWriter, Write};
-use rayon::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
-use reth_primitives_traits::transaction::signed::SignedTransaction;
-use std::time::Instant;
-// use reth_node_core::{
-//     consensus::beacon::BeaconConsensus as EthBeaconConsensus,
-//     eth::EthEvmConfig,
-//     rpc::{
-//         eth::EthApi,
-//         builder::{RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig},
-//     },
-//     task::TokioTaskExecutor,
-// };
-use futures::future;
-use reqwest::Client;
-use serde_json::{json};
-
-/// Size of randomly generated blocks in bytes
-const BLOCK_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
 
 /// Size of chunks in which the data is split for streaming
 const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
-/// Path to the file containing the blocks
-const BLOCKS_FILE: &str = "./data/blocks.dat";
-
 /// Path to the file containing the genesis
 const ETH_GENESIS_PATH: &str = "./data/genesis.json";
-
-/// Path to the database
-const DB_PATH: &str = "./data/db";
 
 use crate::eth::{BlockExecutor, BlockProposer};
 
@@ -116,9 +47,7 @@ pub struct State {
     store: Store,
     stream_nonce: u32,
     streams_map: PartStreamsMap,
-    rng: StdRng,
     block_proposer: BlockProposer,
-    eth_genesis: EthGenesis,
     block_executor: BlockExecutor,
     rpc_server: Option<RpcServerHandle>,
 
@@ -139,18 +68,6 @@ enum SignatureVerificationError {
 
     /// Indicates that the signature in the `Fin` part is invalid.
     InvalidSignature,
-}
-
-// Make up a seed for the rng based on our address in
-// order for each node to likely propose different values at
-// each round.
-fn seed_from_address(address: &Address) -> u64 {
-    address.into_inner().chunks(8).fold(0u64, |acc, chunk| {
-        let term = chunk.iter().fold(0u64, |acc, &x| {
-            acc.wrapping_shl(8).wrapping_add(u64::from(x))
-        });
-        acc.wrapping_add(term)
-    })
 }
 
 impl State {
@@ -209,11 +126,9 @@ impl State {
             store,
             stream_nonce: 0,
             streams_map: PartStreamsMap::new(),
-            rng: StdRng::seed_from_u64(seed_from_address(&address)),
             peers: HashSet::new(),
             block_proposer: BlockProposer::new(&blocks_file).unwrap(),
             block_executor,
-            eth_genesis,
             rpc_server,
         }
     }
@@ -336,13 +251,6 @@ impl State {
             .store
             .get_block_data(certificate.height, certificate.round)
             .await?;
-
-        // Log first 32 bytes of block data
-        if let Some(data) = &block_data {
-            if data.len() >= 32 {
-                info!("Committed block_data[0..32]: {}", hex::encode(&data[..32]));
-            }
-        }
 
         if let Some(data) = block_data {
             self.store

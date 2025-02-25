@@ -10,7 +10,6 @@ use malachitebft_app_channel::app::types::ProposedValue;
 use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::TestContext;
-use alloy_genesis::Genesis as EthGenesis;
 use crate::state::{decode_value, State};
 
 pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyre::Result<()> {
