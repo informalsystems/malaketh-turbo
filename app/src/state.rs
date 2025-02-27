@@ -72,7 +72,7 @@ enum SignatureVerificationError {
 
 impl State {
     /// Creates a new State instance with the given validator address and starting height
-    pub fn new(
+    pub async fn new(
         genesis: Genesis,
         ctx: TestContext,
         signing_provider: Ed25519Provider,
@@ -100,8 +100,7 @@ impl State {
 
         let block_executor = BlockExecutor::new(db_path, eth_genesis.clone()).unwrap();
         let rpc_server = if enable_rpc {
-            // Start RPC server synchronously since we're in an async context
-            match futures::executor::block_on(block_executor.start_server()) {
+            match block_executor.start_server().await {
                 Ok(handle) => {
                     info!("RPC server started successfully");
                     Some(handle)

@@ -168,7 +168,8 @@ impl Node for App {
             start_height,
             store,
             self.enable_rpc,
-        );
+        )
+        .await;
 
         let app_handle = tokio::spawn(async move {
             if let Err(e) = crate::app::run(&mut state, &mut channels).await {
