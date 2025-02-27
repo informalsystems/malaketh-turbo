@@ -1,15 +1,15 @@
 //! Internal state of the application. This is a simplified abstract to keep it simple.
 //! A regular application would have mempool implemented, a proper database and input methods like RPC.
 
-use std::io::{BufReader, Read};
 use std::fs::File;
+use std::io::{BufReader, Read};
 
 use bytes::Bytes;
 use color_eyre::eyre;
 use tracing::{error, info};
 
-use malachitebft_reth_types::Address;
 use alloy_genesis::Genesis as EthGenesis;
+use malachitebft_reth_types::Address;
 
 use reth::{
     api::NodeTypesWithDBAdapter,
@@ -21,35 +21,31 @@ use reth::{
     rpc::eth::EthApi,
 };
 
-use reth_node_ethereum::{
-    EthEvmConfig, EthExecutorProvider, EthereumNode,
-};
+use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider, EthereumNode};
 
 use reth::rpc::builder::{
-    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig, RpcServerHandle,
+    RethRpcModule, RpcModuleBuilder, RpcServerConfig, RpcServerHandle, TransportRpcModuleConfig,
 };
 
 use reth::tasks::TokioTaskExecutor;
 
+use alloy_consensus::BlockHeader;
 use alloy_primitives::{Address as EthAddress, U256};
 use alloy_rpc_types_engine::ExecutionPayloadV1;
 use eyre::Result;
-use reth_primitives::{Block, RecoveredBlock};
-use alloy_consensus::BlockHeader;
-use reth_provider::{
-    BlockWriter, AccountReader, StateProviderFactory, DatabaseProviderFactory,
-};
-use reth_revm::database::StateProviderDatabase;
-use reth_chainspec::{ChainSpecBuilder, ChainSpec};
-use reth_evm::execute::{BlockExecutorProvider, Executor, ExecutionOutcome};
-use reth_trie::{HashedPostStateSorted, updates::TrieUpdates};
-use std::{sync::Arc, collections::BTreeMap};
-use serde_json;
-use reth_db_common::init::init_genesis;
+use reth_chainspec::{ChainSpec, ChainSpecBuilder};
 use reth_db::{mdbx::DatabaseArguments, DatabaseEnv};
-use std::path::PathBuf;
+use reth_db_common::init::init_genesis;
+use reth_evm::execute::{BlockExecutorProvider, ExecutionOutcome, Executor};
+use reth_primitives::{Block, RecoveredBlock};
 use reth_primitives_traits::transaction::signed::SignedTransaction;
+use reth_provider::{AccountReader, BlockWriter, DatabaseProviderFactory, StateProviderFactory};
+use reth_revm::database::StateProviderDatabase;
+use reth_trie::{updates::TrieUpdates, HashedPostStateSorted};
+use serde_json;
+use std::path::PathBuf;
 use std::time::Instant;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// Read blocks from a file one at a time
 pub struct BlockProposer {
@@ -71,7 +67,7 @@ impl BlockProposer {
                 let len = u32::from_be_bytes(len_bytes) as usize;
                 let mut block_bytes = vec![0u8; len];
                 self.reader.read_exact(&mut block_bytes)?;
-                
+
                 Ok(Some(block_bytes))
             }
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
@@ -83,18 +79,18 @@ impl BlockProposer {
         let Some(block) = self.read_block()? else {
             return Ok(Bytes::new());
         };
-        
+
         // Deserialize the block
         let payload: ExecutionPayloadV1 = serde_json::from_slice(&block)?;
         let mut block: Block = payload.try_into_block()?;
-        
+
         // Update the block number to match consensus height
         block.header.number = current_height;
-        
+
         // Convert back to payload and serialize
         let payload = ExecutionPayloadV1::from_block_slow(&block);
         let bytes = serde_json::to_vec(&payload)?;
-        
+
         Ok(Bytes::from(bytes))
     }
 }
@@ -127,18 +123,21 @@ impl BlockExecutionTimer {
     fn report(&self, block_number: u64, num_txs: usize, gas_used: u64, num_receipts: usize) {
         let total_time = self.start_time.elapsed().as_secs_f64();
         let tracked_time: f64 = self.timings.values().sum();
-        
+
         info!("Block execution completed:");
         info!("  Gas used: {}", gas_used);
         info!("  Number of receipts: {}", num_receipts);
-        
+
         info!("\nBlock {} timing breakdown:", block_number);
         for (name, duration) in &self.timings {
             info!("  {} time: {:.2}s", name, duration);
         }
         info!("  Total time: {:.2}s", total_time);
         info!("  Other overhead: {:.2}s", total_time - tracked_time);
-        info!("  Transactions per second: {:.2}", num_txs as f64 / total_time);
+        info!(
+            "  Transactions per second: {:.2}",
+            num_txs as f64 / total_time
+        );
     }
 }
 
@@ -153,7 +152,7 @@ impl BlockExecutor {
     /// Create a new BlockExecutor with the given database path and genesis configuration
     pub fn new(db_path: PathBuf, genesis: EthGenesis) -> Result<Self> {
         info!("Creating BlockExecutor with db_path: {:?}", db_path);
-        
+
         // Delete existing database folder if it exists
         if db_path.exists() {
             info!("Removing existing db directory");
@@ -163,7 +162,7 @@ impl BlockExecutor {
         // Create directories
         info!("Creating db directory");
         std::fs::create_dir_all(&db_path)?;
-        
+
         // Create static files path
         let static_files_path = db_path.join("static_files");
         info!("Creating static files directory at {:?}", static_files_path);
@@ -176,11 +175,7 @@ impl BlockExecutor {
         }
 
         // Create chain specification
-        let spec = Arc::new(
-            ChainSpecBuilder::mainnet()
-                .genesis(genesis)
-                .build()
-        );
+        let spec = Arc::new(ChainSpecBuilder::mainnet().genesis(genesis).build());
 
         info!("Creating provider factory");
         let factory = ProviderFactory::<NodeTypesWithDBAdapter<EthereumNode, Arc<DatabaseEnv>>>::new_with_database_path(
@@ -207,7 +202,8 @@ impl BlockExecutor {
         // Deserialize the block data into a Block
         let payload: ExecutionPayloadV1 = serde_json::from_slice(&data)
             .map_err(|e| eyre::eyre!("Failed to deserialize ExecutionPayloadV1: {}", e))?;
-        let block: Block = payload.try_into_block()
+        let block: Block = payload
+            .try_into_block()
             .map_err(|e| eyre::eyre!("Failed to convert ExecutionPayloadV1 to Block: {}", e))?;
 
         println!("\nExecuting block {}...", block.number);
@@ -223,7 +219,7 @@ impl BlockExecutor {
                 // Convert alloy_primitives::Address to our Address type
                 let signer_bytes: [u8; 20] = *signer.as_ref();
                 let our_signer = Address::new(signer_bytes);
-                
+
                 if let Some(balance) = self.get_balance(&our_signer)? {
                     initial_balances.insert(signer, balance);
                     println!("Initial balance for {}: {}", signer, balance);
@@ -232,28 +228,28 @@ impl BlockExecutor {
         }
 
         let mut timer = BlockExecutionTimer::new();
-        
+
         // Provider setup
         timer.start("Provider setup");
         let executor_provider = EthExecutorProvider::ethereum(self.spec.clone());
         let state_provider = self.blockchain.latest()?;
         let executor = executor_provider.executor(StateProviderDatabase::new(&state_provider));
         timer.end("Provider setup");
-        
+
         // Block recovery
         timer.start("Block recovery");
         let recovered_block = RecoveredBlock::try_recover(block.clone())?;
         timer.end("Block recovery");
-        
+
         // Block execution
         timer.start("Execution");
         let result = executor.execute(&recovered_block)?;
         timer.end("Execution");
-        
+
         // Store these before moving result
         let gas_used = result.gas_used;
         let num_receipts = result.receipts.len();
-        
+
         // Validate receipts
         if num_receipts != block.body.transactions.len() {
             return Err(eyre::eyre!(
@@ -272,13 +268,13 @@ impl BlockExecutor {
                 ));
             }
         }
-        
+
         // Write setup
         timer.start("Write setup");
         let provider_rw = self.blockchain.database_provider_rw()?;
         let execution_outcome = ExecutionOutcome::from((result, recovered_block.number()));
         timer.end("Write setup");
-        
+
         // State commit
         timer.start("State commit");
         provider_rw.append_blocks_with_state(
@@ -289,13 +285,13 @@ impl BlockExecutor {
         )?;
         provider_rw.commit()?;
         timer.end("State commit");
-        
+
         // Validate final state
         for (signer, initial_balance) in initial_balances {
             // Convert alloy_primitives::Address to our Address type
             let signer_bytes: [u8; 20] = *signer.as_ref();
             let our_signer = Address::new(signer_bytes);
-            
+
             if let Some(final_balance) = self.get_balance(&our_signer)? {
                 println!("Final balance for {}: {}", signer, final_balance);
                 if final_balance > initial_balance {
@@ -308,9 +304,14 @@ impl BlockExecutor {
                 }
             }
         }
-        
-        timer.report(block.number, block.body.transactions.len(), gas_used, num_receipts);
-        
+
+        timer.report(
+            block.number,
+            block.body.transactions.len(),
+            gas_used,
+            num_receipts,
+        );
+
         Ok(())
     }
 
@@ -319,8 +320,10 @@ impl BlockExecutor {
         let state_provider = self.blockchain.latest()?;
         // Convert our Address type to alloy_primitives::Address
         let eth_address = EthAddress::new(address.into_inner());
-        
-        Ok(state_provider.basic_account(&eth_address)?.map(|account| account.balance))
+
+        Ok(state_provider
+            .basic_account(&eth_address)?
+            .map(|account| account.balance))
     }
 
     /// Start the RPC server
@@ -331,18 +334,15 @@ impl BlockExecutor {
         // Create the RPC module builder with our components
         let rpc_builder = RpcModuleBuilder::default()
             .with_provider((*self.blockchain).clone())
-            .with_noop_pool()  // We don't need transaction pool for this example
-            .with_noop_network()  // We don't need network for this example
+            .with_noop_pool() // We don't need transaction pool for this example
+            .with_noop_network() // We don't need network for this example
             .with_executor(TokioTaskExecutor::default())
             .with_evm_config(EthEvmConfig::new(self.spec.clone()))
             .with_block_executor(EthExecutorProvider::ethereum(self.spec.clone()))
             .with_consensus(EthBeaconConsensus::new(self.spec.clone()));
 
         // Build the server modules
-        let server = rpc_builder.build(
-            module_config,
-            Box::new(EthApi::with_spawner),
-        );
+        let server = rpc_builder.build(module_config, Box::new(EthApi::with_spawner));
 
         // Configure and start the server
         let server_config = RpcServerConfig::http(Default::default())
@@ -350,11 +350,11 @@ impl BlockExecutor {
 
         let handle = server_config.start(&server).await?;
 
-        println!("RPC server started at http://{}", handle.http_local_addr().unwrap());
+        println!(
+            "RPC server started at http://{}",
+            handle.http_local_addr().unwrap()
+        );
 
         Ok(handle)
     }
 }
-
-
-

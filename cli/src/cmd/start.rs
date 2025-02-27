@@ -34,7 +34,11 @@ impl StartCmd {
 }
 
 /// start command to run a node.
-pub async fn start(node: impl Node, metrics: Option<MetricsConfig>, enable_rpc: bool) -> eyre::Result<()> {
+pub async fn start(
+    node: impl Node,
+    metrics: Option<MetricsConfig>,
+    enable_rpc: bool,
+) -> eyre::Result<()> {
     // Enable Prometheus
     if let Some(metrics) = metrics {
         if metrics.enabled {

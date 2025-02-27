@@ -9,6 +9,7 @@ use color_eyre::eyre;
 use sha3::Digest;
 use tracing::{debug, error, info};
 
+use alloy_genesis::Genesis as EthGenesis;
 use malachitebft_app_channel::app::streaming::{StreamContent, StreamId, StreamMessage};
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{CommitCertificate, Round, Validity};
@@ -18,7 +19,6 @@ use malachitebft_reth_types::{
     Address, Ed25519Provider, Genesis, Height, ProposalData, ProposalFin, ProposalInit,
     ProposalPart, TestContext, ValidatorSet, Value,
 };
-use alloy_genesis::Genesis as EthGenesis;
 
 use crate::store::{DecidedValue, Store};
 use crate::streaming::{PartStreamsMap, ProposalParts};
@@ -85,19 +85,19 @@ impl State {
         let store_path = store.get_path();
         let node_dir = store_path.parent().unwrap();
         let db_path = node_dir.join("eth_db");
-        
+
         // Extract node index from the directory name
         let node_index = node_dir
             .file_name()
             .and_then(|name| name.to_str())
             .and_then(|name| name.parse::<usize>().ok())
             .expect("Node directory should be a number");
-        
+
         let blocks_file = format!("./data/blocks-{}", node_index);
-        
+
         let eth_genesis_json = std::fs::read_to_string(ETH_GENESIS_PATH).unwrap();
         let eth_genesis: EthGenesis = serde_json::from_str(&eth_genesis_json).unwrap();
-        
+
         let block_executor = BlockExecutor::new(db_path, eth_genesis.clone()).unwrap();
         let rpc_server = if enable_rpc {
             // Start RPC server synchronously since we're in an async context
@@ -134,7 +134,8 @@ impl State {
     }
 
     pub fn make_block(&mut self) -> eyre::Result<Bytes> {
-        self.block_proposer.propose_block(self.current_height.as_u64())
+        self.block_proposer
+            .propose_block(self.current_height.as_u64())
     }
 
     /// Returns the earliest height available in the state
@@ -436,7 +437,6 @@ impl State {
         Ok(())
     }
 }
-
 
 /// Re-assemble a [`ProposedValue`] from its [`ProposalParts`].
 fn assemble_value_from_parts(parts: ProposalParts) -> (ProposedValue<TestContext>, Bytes) {

@@ -1,9 +1,9 @@
 use std::mem::size_of;
 use std::ops::RangeBounds;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use std::path::PathBuf;
 
 use bytes::Bytes;
 use prost::Message;
@@ -429,7 +429,7 @@ impl Store {
         let db = Db::new(&path_buf, metrics)?;
         db.create_tables()?;
 
-        Ok(Self { 
+        Ok(Self {
             db: Arc::new(db),
             path: path_buf,
         })
