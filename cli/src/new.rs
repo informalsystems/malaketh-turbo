@@ -83,6 +83,7 @@ pub fn generate_config(
         moniker: format!("test-{}", index),
         consensus: ConsensusConfig {
             timeouts: TimeoutConfig::default(),
+            vote_sync: VoteSyncConfig::default(),
             p2p: P2pConfig {
                 protocol: PubSubProtocol::default(),
                 listen_addr: transport.multiaddr("127.0.0.1", consensus_port),
@@ -146,7 +147,7 @@ pub fn generate_config(
             max_tx_count: 10000,
             gossip_batch_size: 0,
         },
-        sync: Default::default(),
+        value_sync: Default::default(),
         metrics: MetricsConfig {
             enabled: true,
             listen_addr: format!("127.0.0.1:{metrics_port}").parse().unwrap(),

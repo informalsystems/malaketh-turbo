@@ -2,6 +2,7 @@ use color_eyre::eyre::{self, eyre};
 use std::time::Duration;
 use tracing::{error, info};
 
+use crate::state::{decode_value, State};
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
@@ -10,7 +11,6 @@ use malachitebft_app_channel::app::types::ProposedValue;
 use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::TestContext;
-use crate::state::{decode_value, State};
 
 pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyre::Result<()> {
     while let Some(msg) = channels.consensus.recv().await {
