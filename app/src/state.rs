@@ -259,11 +259,18 @@ impl State {
 
             // Only execute blocks if this node is running the RPC server
             if !data.is_empty() && self.rpc_server.is_some() {
-                // Execute the block
-                info!("Starting block execution for height {}", certificate.height);
-                self.block_executor.next_block(&data)?;
+                // Execute the block in the background
+                let executor = self.block_executor.clone();
+                let height = certificate.height;
+                tokio::task::spawn_blocking(move || {
+                    match executor.next_block(&data) {
+                        Ok(_) => info!(height = %height, "Successfully executed block"),
+                        Err(e) => error!(height = %height, "Failed to execute block: {}. Continuing with consensus...", e),
+                    }
+                });
             }
         }
+
 
         // Prune the store, keep the last 5 heights
         let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5));
