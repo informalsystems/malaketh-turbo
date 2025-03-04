@@ -42,7 +42,6 @@ use reth_primitives_traits::transaction::signed::SignedTransaction;
 use reth_provider::{AccountReader, BlockWriter, DatabaseProviderFactory, StateProviderFactory};
 use reth_revm::database::StateProviderDatabase;
 use reth_trie::{updates::TrieUpdates, HashedPostStateSorted};
-use serde_json;
 use std::path::PathBuf;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -153,7 +152,7 @@ impl BlockExecutor {
     /// Execute and commit the next block
     pub fn next_block(&self, data: &Bytes) -> Result<()> {
         // Deserialize the block data into a Block
-        let payload: ExecutionPayloadV1 = serde_json::from_slice(&data)
+        let payload: ExecutionPayloadV1 = serde_json::from_slice(data)
             .map_err(|e| eyre::eyre!("Failed to deserialize ExecutionPayloadV1: {}", e))?;
         let block: Block = payload
             .try_into_block()
@@ -168,13 +167,13 @@ impl BlockExecutor {
         let mut initial_balances = BTreeMap::new();
         for tx in &block.body.transactions {
             let signer = tx.recover_signer().unwrap();
-            if !initial_balances.contains_key(&signer) {
+            if let std::collections::btree_map::Entry::Vacant(e) = initial_balances.entry(signer) {
                 // Convert alloy_primitives::Address to our Address type
                 let signer_bytes: [u8; 20] = *signer.as_ref();
                 let our_signer = Address::new(signer_bytes);
 
                 if let Some(balance) = self.get_balance(&our_signer)? {
-                    initial_balances.insert(signer, balance);
+                    e.insert(balance);
                     println!("Initial balance for {}: {}", signer, balance);
                 }
             }

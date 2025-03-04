@@ -6,7 +6,6 @@ use eyre::Result;
 use reth_primitives::{Block, BlockBody, Header, Transaction, TransactionSigned};
 
 use alloy_genesis::{ChainConfig, Genesis, GenesisAccount};
-use serde_json;
 use std::{collections::BTreeMap, str::FromStr};
 
 use alloy_signer::Signer;

@@ -26,7 +26,6 @@ use crate::streaming::{PartStreamsMap, ProposalParts};
 use reth::rpc::builder::RpcServerHandle;
 
 use eyre::Result;
-use serde_json;
 
 /// Size of chunks in which the data is split for streaming
 const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
@@ -265,15 +264,14 @@ impl State {
                 // Execute the block in the background
                 let executor = self.block_executor.clone();
                 let height = certificate.height;
-                tokio::task::spawn_blocking(move || {
-                    match executor.next_block(&data) {
-                        Ok(_) => info!(height = %height, "Successfully executed block"),
-                        Err(e) => error!(height = %height, "Failed to execute block: {}. Continuing with consensus...", e),
+                tokio::task::spawn_blocking(move || match executor.next_block(&data) {
+                    Ok(_) => info!(height = %height, "Successfully executed block"),
+                    Err(e) => {
+                        error!(height = %height, "Failed to execute block: {}. Continuing with consensus...", e)
                     }
                 });
             }
         }
-
 
         // Prune the store, keep the last 5 heights
         let retain_height = Height::new(certificate.height.as_u64().saturating_sub(25));
