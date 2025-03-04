@@ -94,52 +94,6 @@ impl BlockProposer {
         Ok(Bytes::from(bytes))
     }
 }
-// Tracks and reports timing information for block execution steps
-struct BlockExecutionTimer {
-    start_time: Instant,
-    starts: BTreeMap<&'static str, Instant>,
-    timings: BTreeMap<&'static str, f64>,
-}
-
-impl BlockExecutionTimer {
-    fn new() -> Self {
-        Self {
-            start_time: Instant::now(),
-            starts: BTreeMap::new(),
-            timings: BTreeMap::new(),
-        }
-    }
-
-    fn start(&mut self, name: &'static str) {
-        self.starts.insert(name, Instant::now());
-    }
-
-    fn end(&mut self, name: &'static str) {
-        if let Some(start) = self.starts.remove(name) {
-            self.timings.insert(name, start.elapsed().as_secs_f64());
-        }
-    }
-
-    fn report(&self, block_number: u64, num_txs: usize, gas_used: u64, num_receipts: usize) {
-        let total_time = self.start_time.elapsed().as_secs_f64();
-        let tracked_time: f64 = self.timings.values().sum();
-
-        info!("Block execution completed:");
-        info!("  Gas used: {}", gas_used);
-        info!("  Number of receipts: {}", num_receipts);
-
-        info!("\nBlock {} timing breakdown:", block_number);
-        for (name, duration) in &self.timings {
-            info!("  {} time: {:.2}s", name, duration);
-        }
-        info!("  Total time: {:.2}s", total_time);
-        info!("  Other overhead: {:.2}s", total_time - tracked_time);
-        info!(
-            "  Transactions per second: {:.2}",
-            num_txs as f64 / total_time
-        );
-    }
-}
 
 /// Handles block execution and database interactions
 #[derive(Clone)]
@@ -227,24 +181,20 @@ impl BlockExecutor {
             }
         }
 
-        let mut timer = BlockExecutionTimer::new();
-
-        // Provider setup
-        timer.start("Provider setup");
+        info!("Creating EthExecutorProvider...");
         let executor_provider = EthExecutorProvider::ethereum(self.spec.clone());
+
+        info!("Getting latest state provider...");
         let state_provider = self.blockchain.latest()?;
+
+        info!("Creating executor with state provider...");
         let executor = executor_provider.executor(StateProviderDatabase::new(&state_provider));
-        timer.end("Provider setup");
 
         // Block recovery
-        timer.start("Block recovery");
         let recovered_block = RecoveredBlock::try_recover(block.clone())?;
-        timer.end("Block recovery");
 
         // Block execution
-        timer.start("Execution");
         let result = executor.execute(&recovered_block)?;
-        timer.end("Execution");
 
         // Store these before moving result
         let gas_used = result.gas_used;
@@ -269,14 +219,9 @@ impl BlockExecutor {
             }
         }
 
-        // Write setup
-        timer.start("Write setup");
         let provider_rw = self.blockchain.database_provider_rw()?;
         let execution_outcome = ExecutionOutcome::from((result, recovered_block.number()));
-        timer.end("Write setup");
 
-        // State commit
-        timer.start("State commit");
         provider_rw.append_blocks_with_state(
             vec![recovered_block],
             &execution_outcome,
@@ -284,7 +229,6 @@ impl BlockExecutor {
             TrieUpdates::default(),
         )?;
         provider_rw.commit()?;
-        timer.end("State commit");
 
         // Validate final state
         for (signer, initial_balance) in initial_balances {
@@ -305,12 +249,9 @@ impl BlockExecutor {
             }
         }
 
-        timer.report(
-            block.number,
-            block.body.transactions.len(),
-            gas_used,
-            num_receipts,
-        );
+        info!("Block execution completed:");
+        info!("  Gas used: {}", gas_used);
+        info!("  Number of receipts: {}", num_receipts);
 
         Ok(())
     }

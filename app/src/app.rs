@@ -132,17 +132,22 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             AppMsg::Decided {
                 certificate, reply, ..
             } => {
+                let height = certificate.height;
+                let round = certificate.round;
+                let value_id = certificate.value_id;
+
                 info!(
-                    height = %certificate.height, round = %certificate.round,
-                    value = %certificate.value_id,
+                    height = %height, round = %round, value = %value_id,
                     "Consensus has decided on value"
                 );
 
                 // When that happens, we store the decided value in our store
+                info!(height = %height, round = %round, value = %value_id, "Committing decided value");
                 state.commit(certificate).await?;
+                info!(height = %height, round = %round, value = %value_id, "Committed decided value");
 
                 // Pause briefly before starting next height, just to make following the logs easier
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                // tokio::time::sleep(Duration::from_millis(500)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply

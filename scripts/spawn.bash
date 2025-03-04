@@ -40,7 +40,7 @@ if [[ -z "$APP_BINARY" ]]; then
 fi
 
 echo "Compiling '$APP_BINARY'..."
-cargo build --bin $APP_BINARY
+cargo build --release --bin $APP_BINARY
 
 export RUST_BACKTRACE=full
 
@@ -63,9 +63,9 @@ for NODE in $(seq 0 $((NODES_COUNT - 1))); do
     echo "[Node $NODE] Spawning node..."
     if [[ -n "$RPC_NODE" ]] && [[ "$NODE" -eq "$RPC_NODE" ]]; then
         echo "[Node $NODE] Starting with RPC server enabled..."
-        cargo run --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" --enable-rpc > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
+        cargo run --release --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" --enable-rpc > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
     else
-        cargo run --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
+        cargo run --release --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
     fi
     echo $! > "$NODES_HOME/$NODE/node.pid"
     echo "[Node $NODE] Logs are available at: $NODES_HOME/$NODE/logs/node.log"
