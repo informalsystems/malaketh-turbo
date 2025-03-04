@@ -33,7 +33,8 @@ if ! command -v tmux &> /dev/null; then
 fi
 
 help() {
-    echo "Usage: spawn.sh [--help] --nodes NODES_COUNT --home NODES_HOME [--app APP_BINARY] [--no-reset] [--profile=PROFILE|--debug] [--lldb]"
+    echo "Usage: spawn.sh [--help] --nodes NODES_COUNT --home NODES_HOME [--rpc-node ID] [--app APP_BINARY] [--no-reset] [--profile=PROFILE|--debug] [--lldb]"
+    echo "  --rpc-node: Index of the node that should run the RPC server (optional, default: none)"
 }
 
 # Parse arguments
@@ -53,6 +54,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --app)
             app_name="$2"
+            shift 2
+            ;;
+        --rpc-node)
+            rpc_node="$2"
             shift 2
             ;;
         --no-reset)
@@ -136,6 +141,12 @@ for ((NODE=0; NODE<NODES_COUNT; NODE++)); do
 
     echo "[Node $NODE] Spawning node..."
 
+    enable_rpc=""
+    if [ -n "$rpc_node" ] && [ "$NODE" -eq "$rpc_node" ]; then
+        echo "[Node $NODE] Starting with RPC server enabled..."
+        enable_rpc="--enable-rpc"
+    fi
+
     if [ "$lldb" = true ]; then
         lldb_script="
             b $app_name::main
@@ -144,14 +155,14 @@ for ((NODE=0; NODE<NODES_COUNT; NODE++)); do
             continue
         "
         cmd_prefix="rust-lldb --source =(echo \"$lldb_script\") ./target/$build_folder/$app_name -- "
-        tmux send-keys -t "$pane" "$cmd_prefix start --home '$NODE_HOME'" Enter
+        tmux send-keys -t "$pane" "$cmd_prefix start --home '$NODE_HOME' $enable_rpc" Enter
     elif [ "$profile" = true ] && [ "$NODE" -eq 0 ]; then
         cmd_prefix="cargo instruments -p $app_name --profile $build_profile --template $profile_template --time-limit 60000 --output '$NODE_HOME/traces/' --"
         tmux send-keys -t "$pane" "sleep $NODE" Enter
-        tmux send-keys -t "$pane" "unbuffer $cmd_prefix start --home '$NODE_HOME' 2>&1 | tee '$NODE_HOME/logs/node.log'" Enter
+        tmux send-keys -t "$pane" "unbuffer $cmd_prefix start --home '$NODE_HOME' $enable_rpc 2>&1 | tee '$NODE_HOME/logs/node.log'" Enter
     else
         cmd_prefix="./target/$build_folder/$app_name"
-        tmux send-keys -t "$pane" "unbuffer $cmd_prefix start --home '$NODE_HOME' 2>&1 | tee '$NODE_HOME/logs/node.log'" Enter
+        tmux send-keys -t "$pane" "unbuffer $cmd_prefix start --home '$NODE_HOME' $enable_rpc 2>&1 | tee '$NODE_HOME/logs/node.log'" Enter
     fi
 done
 
