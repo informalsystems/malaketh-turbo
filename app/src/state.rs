@@ -201,9 +201,7 @@ impl State {
         }
 
         // Store the proposal and its data
-        println!("XXX Storing undecided proposal for height {} round {}", value.height, value.round);
         self.store.store_undecided_proposal(value.clone()).await?;
-        println!("XXX Storing undecided block data for height {} round {}", part_height, part_round);
         self.store
             .store_undecided_block_data(part_height, part_round, data)
             .await?;
