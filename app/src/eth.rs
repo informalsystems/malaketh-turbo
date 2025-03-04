@@ -44,7 +44,6 @@ use reth_revm::database::StateProviderDatabase;
 use reth_trie::{updates::TrieUpdates, HashedPostStateSorted};
 use serde_json;
 use std::path::PathBuf;
-use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
 /// Read blocks from a file one at a time

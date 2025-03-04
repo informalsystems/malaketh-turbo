@@ -19,7 +19,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
