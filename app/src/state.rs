@@ -184,6 +184,9 @@ impl State {
             return Ok(None);
         }
 
+        let part_height = parts.height;
+        let part_round = parts.round;
+
         // Re-assemble the proposal from its parts
         let (value, data) = assemble_value_from_parts(parts);
 
@@ -198,9 +201,11 @@ impl State {
         }
 
         // Store the proposal and its data
+        println!("XXX Storing undecided proposal for height {} round {}", value.height, value.round);
         self.store.store_undecided_proposal(value.clone()).await?;
+        println!("XXX Storing undecided block data for height {} round {}", part_height, part_round);
         self.store
-            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .store_undecided_block_data(part_height, part_round, data)
             .await?;
 
         Ok(Some(value))
@@ -266,7 +271,7 @@ impl State {
         }
 
         // Prune the store, keep the last 5 heights
-        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5));
+        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(25));
         self.store.prune(retain_height).await?;
 
         // Move to next height

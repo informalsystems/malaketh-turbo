@@ -25,10 +25,11 @@ use std::collections::HashSet;
 use std::path::Path;
 
 /// Test mnemonics for wallet generation
-const TEST_MNEMONICS: [&str; 3] = [
+const TEST_MNEMONICS: [&str; 4] = [
     "test test test test test test test test test test test junk",
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     "zero zero zero zero zero zero zero zero zero zero zero zoo",
+    "slender flush sting survey huge pottery brain vivid gentle guitar panic harbor",
 ];
 
 #[derive(Parser)]
