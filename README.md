@@ -6,11 +6,26 @@ Malachite provides consensus, and so far has been benchmarked at a throughput of
 
 ## Running the demo
 
-First, run `cargo run --bin utils -- generate`. This generates blocks of transactions and stores them on disk for nodes to propose.
+First, generate blocks of transactions and stores them on disk for nodes to propose:
 
-Then, run `rm -rf ./nodes; cargo build; cargo run --bin malachitebft-reth-app -- testnet --nodes 3 --home nodes; bash scripts/spawn.bash --nodes 3 --home nodes --rpc-node 0`. This command cleans up any old testnet and starts a new one with three nodes, with node 0 executing blocks and acting as an RPC node.
+```shell
+$ cargo run --bin utils -- generate
+```
 
-To view the logs, run `tail -f nodes/0/logs/node.log`.
+Then clean up any old testnet and start a new one with three nodes, with node 0 executing blocks and acting as an RPC node:
+
+```shell
+$ rm -rf ./nodes;
+$ cargo build --release;
+$ cargo run --release --bin malachitebft-reth-app -- testnet --nodes 3 --home nodes --runtime multi-threaded:4
+$ bash scripts/spawn.bash --nodes 3 --home nodes --rpc-node 0
+```
+
+To view the logs, run:
+
+```shell
+$ tail -f nodes/0/logs/node.log
+```
 
 To verify that the blocks are being executed correctly, wait for 11 or 12 blocks to be produced, then run `cargo run --bin utils -- verify`. This script will check that balance changes indicate that blocks have been executed properly.
 
