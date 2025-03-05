@@ -33,6 +33,9 @@ const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 /// Path to the file containing the genesis
 const ETH_GENESIS_PATH: &str = "./data/genesis.json";
 
+/// Maximum number of blocks to keep in history
+const MAX_HISTORY_LENGTH: u64 = 25;
+
 use crate::eth::{BlockExecutor, BlockProposer};
 
 /// Represents the internal state of the application node
@@ -273,8 +276,13 @@ impl State {
             }
         }
 
-        // Prune the store, keep the last 5 heights
-        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(25));
+        // Prune the store
+        let retain_height = Height::new(
+            certificate
+                .height
+                .as_u64()
+                .saturating_sub(MAX_HISTORY_LENGTH),
+        );
         self.store.prune(retain_height).await?;
 
         // Move to next height
