@@ -26,13 +26,15 @@ use crate::streaming::{PartStreamsMap, ProposalParts};
 use reth::rpc::builder::RpcServerHandle;
 
 use eyre::Result;
-use serde_json;
 
 /// Size of chunks in which the data is split for streaming
 const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
 /// Path to the file containing the genesis
 const ETH_GENESIS_PATH: &str = "./data/genesis.json";
+
+/// Maximum number of blocks to keep in history
+const MAX_HISTORY_LENGTH: u64 = 25;
 
 use crate::eth::{BlockExecutor, BlockProposer};
 
@@ -184,6 +186,9 @@ impl State {
             return Ok(None);
         }
 
+        let part_height = parts.height;
+        let part_round = parts.round;
+
         // Re-assemble the proposal from its parts
         let (value, data) = assemble_value_from_parts(parts);
 
@@ -200,7 +205,7 @@ impl State {
         // Store the proposal and its data
         self.store.store_undecided_proposal(value.clone()).await?;
         self.store
-            .store_undecided_block_data(self.current_height, self.current_round, data)
+            .store_undecided_block_data(part_height, part_round, data)
             .await?;
 
         Ok(Some(value))
@@ -262,18 +267,22 @@ impl State {
                 // Execute the block in the background
                 let executor = self.block_executor.clone();
                 let height = certificate.height;
-                tokio::task::spawn_blocking(move || {
-                    match executor.next_block(&data) {
-                        Ok(_) => info!(height = %height, "Successfully executed block"),
-                        Err(e) => error!(height = %height, "Failed to execute block: {}. Continuing with consensus...", e),
+                tokio::task::spawn_blocking(move || match executor.next_block(&data) {
+                    Ok(_) => info!(height = %height, "Successfully executed block"),
+                    Err(e) => {
+                        error!(height = %height, "Failed to execute block: {}. Continuing with consensus...", e)
                     }
                 });
             }
         }
 
-
-        // Prune the store, keep the last 5 heights
-        let retain_height = Height::new(certificate.height.as_u64().saturating_sub(5));
+        // Prune the store
+        let retain_height = Height::new(
+            certificate
+                .height
+                .as_u64()
+                .saturating_sub(MAX_HISTORY_LENGTH),
+        );
         self.store.prune(retain_height).await?;
 
         // Move to next height

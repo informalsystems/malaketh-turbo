@@ -37,7 +37,7 @@ impl StartCmd {
 pub async fn start(
     node: impl Node,
     metrics: Option<MetricsConfig>,
-    enable_rpc: bool,
+    _enable_rpc: bool,
 ) -> eyre::Result<()> {
     // Enable Prometheus
     if let Some(metrics) = metrics {
