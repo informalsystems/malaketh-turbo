@@ -3,7 +3,7 @@
 use color_eyre::eyre::{eyre, Result};
 use tracing::{info, trace};
 
-use malachitebft_app_channel::app::Node;
+use malachitebft_app_channel::app::node::Node;
 use malachitebft_reth_cli::args::{Args, Commands};
 use malachitebft_reth_cli::cmd::init::InitCmd;
 use malachitebft_reth_cli::cmd::start::StartCmd;
