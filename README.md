@@ -1,4 +1,4 @@
-# 42,000tps with Reth and Malachite
+# Malaketh-Turbo
 
 At Informal, we’ve been exploring how to integrate Malachite, our cutting-edge Tendermint-based consensus protocol with Reth, one of the leading Ethereum execution clients. Both codebases are built in Rust, so integration is pretty natural.
 
@@ -65,14 +65,5 @@ At this step, most of the Reth integration comes into play. By importing Reth’
 
 This demo achieves a throughput of 10MB/s second by finalizing one 10MB block per second. The blocks contain 42,000 send transactions. The Reth libraries in the client node are able to handle execution of these transactions quite quickly, but if we were using normal EVM traffic with contract calls, the client might fall behind consensus.
 
-## Limitations/Todo
+These numbers are from a local network run with 3 validators on a Macbook. However, given that Malachite has been benchmarked in a large distributed network at 13.5MB per second, it is likely that this demo's speed would hold up in that scenario as well.
 
-This is a rough proof of concept demo, and there is still much to build.
-
-- **Generalize execution and logging:** Currently, the code has hardcoded logging designed for the express purpose of validating the expected execution of many transfers from one account each block.
-- **Fix RPC server:** The RPC server is able to correctly respond to balance queries, but is not able to correctly display block numbers and other information. This is probably just due to misconfigurations we have not had time to fix for this demo.
-- **Test with more diverse transaction loads:** Currently we are just using send transactions. Ideally we would use a realistic mix of sends, contract calls, contract deployments, etc.
-- **DOS vulnerabilities:** This example is currently vulnerable to attacks such as a malicious proposer streaming a huge number of block parts, filling every other node’s memory and storage, and crashing the network. It needs to be hardened against this.
-- **State sync:** Currently the demo is set up to execute blocks when they are finalized, but not to sync and execute old blocks if a node has been offline for a time.
-- **Consensus hang:** Consensus hangs sometimes. This is probably easy to fix.
-- **Better automated test suite:** Currently, the network is tested with manual or automated inspection of the logs. Many of the issues above would be easier to fix if there were an automated test suite validating these scenarios.
