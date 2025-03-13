@@ -1,5 +1,5 @@
 [package]
-name = "malachitebft-reth-app"
+name = "malaketh-turbo"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true

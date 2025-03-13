@@ -17,7 +17,7 @@ Then clean up any old testnet and start a new one with three nodes, with node 0 
 ```shell
 $ rm -rf ./nodes;
 $ cargo build --release;
-$ cargo run --release --bin malachitebft-reth-app -- testnet --nodes 3 --home nodes --runtime multi-threaded:4
+$ cargo run --release --bin malaketh-turbo -- testnet --nodes 3 --home nodes --runtime multi-threaded:4
 $ bash scripts/spawn.bash --nodes 3 --home nodes --rpc-node 0
 ```
 

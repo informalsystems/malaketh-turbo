@@ -5493,53 +5493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "malachitebft-reth-app"
-version = "0.0.1"
-dependencies = [
- "alloy-consensus",
- "alloy-genesis",
- "alloy-primitives",
- "alloy-rpc-types-engine",
- "alloy-signer",
- "alloy-signer-local",
- "async-trait",
- "bytes",
- "clap",
- "color-eyre",
- "derive-where",
- "eyre",
- "futures",
- "hex",
- "informalsystems-malachitebft-app-channel",
- "informalsystems-malachitebft-proto",
- "k256",
- "malachitebft-reth-cli",
- "malachitebft-reth-types",
- "prost",
- "rand 0.8.5",
- "rayon",
- "redb",
- "regex",
- "reqwest 0.11.27",
- "reth",
- "reth-chainspec",
- "reth-db",
- "reth-db-common",
- "reth-evm",
- "reth-node-ethereum",
- "reth-primitives",
- "reth-primitives-traits",
- "reth-provider",
- "reth-revm",
- "reth-trie",
- "serde_json",
- "sha3",
- "thiserror 2.0.11",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "malachitebft-reth-cli"
 version = "0.0.1"
 dependencies = [
@@ -5588,6 +5541,53 @@ dependencies = [
  "serde_json",
  "sha3",
  "signature",
+]
+
+[[package]]
+name = "malaketh-turbo"
+version = "0.0.1"
+dependencies = [
+ "alloy-consensus",
+ "alloy-genesis",
+ "alloy-primitives",
+ "alloy-rpc-types-engine",
+ "alloy-signer",
+ "alloy-signer-local",
+ "async-trait",
+ "bytes",
+ "clap",
+ "color-eyre",
+ "derive-where",
+ "eyre",
+ "futures",
+ "hex",
+ "informalsystems-malachitebft-app-channel",
+ "informalsystems-malachitebft-proto",
+ "k256",
+ "malachitebft-reth-cli",
+ "malachitebft-reth-types",
+ "prost",
+ "rand 0.8.5",
+ "rayon",
+ "redb",
+ "regex",
+ "reqwest 0.11.27",
+ "reth",
+ "reth-chainspec",
+ "reth-db",
+ "reth-db-common",
+ "reth-evm",
+ "reth-node-ethereum",
+ "reth-primitives",
+ "reth-primitives-traits",
+ "reth-provider",
+ "reth-revm",
+ "reth-trie",
+ "serde_json",
+ "sha3",
+ "thiserror 2.0.11",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

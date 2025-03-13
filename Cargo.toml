@@ -27,7 +27,7 @@ overflow-checks = true
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [workspace.dependencies]
-malachitebft-reth-app   = { version = "0.0.1", path = "app" }
+malaketh-turbo   = { version = "0.0.1", path = "app" }
 malachitebft-reth-cli   = { version = "0.0.1", path = "cli" }
 malachitebft-reth-types = { version = "0.0.1", path = "types" }
 
