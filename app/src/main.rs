@@ -3,7 +3,7 @@
 use color_eyre::eyre::{eyre, Result};
 use tracing::{info, trace};
 
-use malachitebft_app_channel::app::Node;
+use malachitebft_app_channel::app::node::Node;
 use malachitebft_reth_cli::args::{Args, Commands};
 use malachitebft_reth_cli::cmd::init::InitCmd;
 use malachitebft_reth_cli::cmd::start::StartCmd;
@@ -12,6 +12,7 @@ use malachitebft_reth_cli::{config, logging, runtime};
 use malachitebft_reth_types::Height;
 
 mod app;
+mod eth;
 mod metrics;
 mod node;
 mod state;
@@ -85,6 +86,7 @@ fn start(args: &Args, cmd: &StartCmd, logging: config::LoggingConfig) -> Result<
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
         start_height: cmd.start_height.map(Height::new),
+        enable_rpc: cmd.enable_rpc,
     };
 
     // Start the node
@@ -100,6 +102,7 @@ fn init(args: &Args, cmd: &InitCmd, logging: config::LoggingConfig) -> Result<()
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
         start_height: Some(Height::new(1)), // We always start at height 1
+        enable_rpc: false,                  // RPC is disabled during initialization
     };
 
     cmd.run(
@@ -120,6 +123,7 @@ fn testnet(args: &Args, cmd: &TestnetCmd, logging: config::LoggingConfig) -> Res
         genesis_file: args.get_genesis_file_path()?,
         private_key_file: args.get_priv_validator_key_file_path()?,
         start_height: Some(Height::new(1)), // We always start at height 1
+        enable_rpc: false,                  // RPC is disabled during testnet generation
     };
 
     cmd.run(&app, &args.get_home_dir()?, logging)

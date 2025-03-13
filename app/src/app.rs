@@ -2,6 +2,7 @@ use color_eyre::eyre::{self, eyre};
 use std::time::Duration;
 use tracing::{error, info};
 
+use crate::state::{decode_value, State};
 use malachitebft_app_channel::app::streaming::StreamContent;
 use malachitebft_app_channel::app::types::codec::Codec;
 use malachitebft_app_channel::app::types::core::{Round, Validity};
@@ -10,8 +11,6 @@ use malachitebft_app_channel::app::types::ProposedValue;
 use malachitebft_app_channel::{AppMsg, Channels, ConsensusMsg, NetworkMsg};
 use malachitebft_reth_types::codec::proto::ProtobufCodec;
 use malachitebft_reth_types::TestContext;
-
-use crate::state::{decode_value, State};
 
 pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyre::Result<()> {
     while let Some(msg) = channels.consensus.recv().await {
@@ -67,7 +66,7 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
 
                 // We need to create a new value to propose and send it back to consensus.
                 // Get block data
-                let block_bytes = state.make_block();
+                let block_bytes = state.make_block()?;
 
                 let proposal = state
                     .propose_value(height, round, block_bytes.clone())
@@ -133,17 +132,22 @@ pub async fn run(state: &mut State, channels: &mut Channels<TestContext>) -> eyr
             AppMsg::Decided {
                 certificate, reply, ..
             } => {
+                let height = certificate.height;
+                let round = certificate.round;
+                let value_id = certificate.value_id;
+
                 info!(
-                    height = %certificate.height, round = %certificate.round,
-                    value = %certificate.value_id,
+                    height = %height, round = %round, value = %value_id,
                     "Consensus has decided on value"
                 );
 
                 // When that happens, we store the decided value in our store
+                info!(height = %height, round = %round, value = %value_id, "Committing decided value");
                 state.commit(certificate).await?;
+                info!(height = %height, round = %round, value = %value_id, "Committed decided value");
 
                 // Pause briefly before starting next height, just to make following the logs easier
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                // tokio::time::sleep(Duration::from_millis(500)).await;
 
                 // And then we instruct consensus to start the next height
                 if reply

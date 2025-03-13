@@ -19,6 +19,7 @@ malachitebft-proto.workspace = true
 hex.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+clap = { version = "4.4", features = ["derive"] }
 derive-where.workspace = true
 color-eyre.workspace = true
 prost.workspace = true
@@ -29,3 +30,32 @@ sha3.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+regex = "1.10.3"
+
+# Main reth crate for common functionality
+reth = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+
+# Individual crates you need
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-trie = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0", features = ["test-utils"] }
+reth-db-common = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.2.0" }
+
+# Common external dependencies
+alloy-primitives = "0.8.20"
+alloy-rpc-types-engine = "0.11.1"
+alloy-consensus = "0.11.1"
+alloy-genesis = "0.11.1"
+alloy-signer = "0.11.1"
+alloy-signer-local = { version = "0.11.1", features = ["mnemonic"] }
+k256 = "0.13"
+eyre = "0.6"
+rayon = "1.8"
+futures = "0.3"
+reqwest = { version = "0.11", features = ["blocking", "json"] }

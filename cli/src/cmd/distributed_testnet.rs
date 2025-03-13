@@ -8,11 +8,11 @@ use color_eyre::eyre::{eyre, Result};
 use itertools::Itertools;
 use tracing::info;
 
-use malachitebft_app::Node;
-use malachitebft_config::*;
+use malachitebft_app::node::{CanGeneratePrivateKey, CanMakeGenesis, CanMakePrivateKeyFile, Node};
 
 use crate::args::Args;
 use crate::cmd::testnet::RuntimeFlavour;
+use crate::config::*;
 use crate::file::{save_config, save_genesis, save_priv_validator_key};
 
 #[derive(Parser, Debug, Clone, PartialEq)]
@@ -88,7 +88,7 @@ impl DistributedTestnetCmd {
     /// Execute the testnet command
     pub fn run<N>(&self, node: &N, home_dir: &Path, logging: LoggingConfig) -> Result<()>
     where
-        N: Node,
+        N: Node + CanMakeGenesis + CanMakePrivateKeyFile + CanGeneratePrivateKey,
     {
         let runtime = match self.runtime {
             RuntimeFlavour::SingleThreaded => RuntimeConfig::SingleThreaded,
@@ -140,7 +140,7 @@ fn distributed_testnet<N>(
     deterministic: bool,
 ) -> Result<()>
 where
-    N: Node,
+    N: Node + CanGeneratePrivateKey + CanMakeGenesis + CanMakePrivateKeyFile,
 {
     let private_keys = crate::new::generate_private_keys(node, nodes, deterministic);
     let public_keys = private_keys
@@ -198,7 +198,6 @@ where
 }
 
 const CONSENSUS_BASE_PORT: usize = 27000;
-const MEMPOOL_BASE_PORT: usize = 28000;
 const METRICS_BASE_PORT: usize = 29000;
 
 /// Generate configuration for node "index" out of "total" number of nodes.
@@ -220,13 +219,14 @@ fn generate_distributed_config(
 ) -> Config {
     let machine = machines[index % machines.len()].clone();
     let consensus_port = CONSENSUS_BASE_PORT + (index / machines.len());
-    let mempool_port = MEMPOOL_BASE_PORT + (index / machines.len());
     let metrics_port = METRICS_BASE_PORT + (index / machines.len());
 
     Config {
         moniker: format!("test-{}", index),
         consensus: ConsensusConfig {
             timeouts: TimeoutConfig::default(),
+            vote_sync: VoteSyncConfig::default(),
+            value_payload: ValuePayload::PartsOnly,
             p2p: P2pConfig {
                 protocol: PubSubProtocol::default(),
                 listen_addr: transport.multiaddr(&machine, consensus_port),
@@ -271,36 +271,12 @@ fn generate_distributed_config(
                 ..Default::default()
             },
         },
-        mempool: MempoolConfig {
-            p2p: P2pConfig {
-                protocol: PubSubProtocol::default(),
-                listen_addr: transport.multiaddr(&machine, mempool_port),
-                persistent_peers: vec![],
-                discovery: DiscoveryConfig {
-                    enabled: false,
-                    bootstrap_protocol,
-                    selector,
-                    num_outbound_peers: 0,
-                    num_inbound_peers: 0,
-                    ephemeral_connection_timeout: Duration::from_secs(0),
-                },
-                transport,
-                ..Default::default()
-            },
-            max_tx_count: 10000,
-            gossip_batch_size: 0,
-        },
-        sync: SyncConfig {
-            enabled: false,
-            status_update_interval: Duration::from_secs(0),
-            request_timeout: Duration::from_secs(0),
-        },
+        value_sync: ValueSyncConfig::default(),
         metrics: MetricsConfig {
             enabled: true,
             listen_addr: format!("{machine}:{metrics_port}").parse().unwrap(),
         },
         logging,
         runtime,
-        test: TestConfig::default(),
     }
 }

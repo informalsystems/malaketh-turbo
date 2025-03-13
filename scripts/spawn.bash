@@ -3,9 +3,11 @@
 # This script takes:
 # - a number of nodes to run as an argument,
 # - the home directory for the nodes configuration folders
+# - optionally, which node should run the RPC server
 
 function help {
-    echo "Usage: spawn.sh [--help] --nodes NODES_COUNT --home NODES_HOME [--app APP_BINARY] [--no-reset]"
+    echo "Usage: spawn.sh [--help] --nodes NODES_COUNT --home NODES_HOME [--app APP_BINARY] [--no-reset] [--rpc-node RPC_NODE_INDEX]"
+    echo "  --rpc-node: Index of the node that should run the RPC server (optional, default: none)"
 }
 
 # Parse arguments
@@ -16,6 +18,7 @@ while [[ "$#" -gt 0 ]]; do
         --home) NODES_HOME="$2"; shift ;;
         --app) APP_BINARY="$2"; shift ;;
         --no-reset) NO_RESET=1; shift ;;
+        --rpc-node) RPC_NODE="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; help; exit 1 ;;
     esac
     shift
@@ -37,7 +40,7 @@ if [[ -z "$APP_BINARY" ]]; then
 fi
 
 echo "Compiling '$APP_BINARY'..."
-cargo build -p $APP_BINARY
+cargo build --release --bin $APP_BINARY
 
 export RUST_BACKTRACE=full
 
@@ -58,7 +61,12 @@ for NODE in $(seq 0 $((NODES_COUNT - 1))); do
     mkdir -p "$NODES_HOME/$NODE/traces"
 
     echo "[Node $NODE] Spawning node..."
-    cargo run -p $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
+    if [[ -n "$RPC_NODE" ]] && [[ "$NODE" -eq "$RPC_NODE" ]]; then
+        echo "[Node $NODE] Starting with RPC server enabled..."
+        cargo run --release --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" --enable-rpc > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
+    else
+        cargo run --release --bin $APP_BINARY -q -- start --home "$NODES_HOME/$NODE" > "$NODES_HOME/$NODE/logs/node.log" 2>&1 &
+    fi
     echo $! > "$NODES_HOME/$NODE/node.pid"
     echo "[Node $NODE] Logs are available at: $NODES_HOME/$NODE/logs/node.log"
 done
